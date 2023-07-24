@@ -5,7 +5,6 @@ Created on Wed Jul 12 11:01:55 2023
 
 @author: jparedes
 """
-import os
 import numpy as np
 from scipy import linalg
 # ===================================================================================
@@ -59,17 +58,29 @@ class randomPlacement():
         locations = np.arange(self.n)
         random_locations = {el:0 for el in np.arange(num_samples)}
         rng = np.random.default_rng(seed=random_seed)
-        for i in np.arange(num_samples):
-            rng.shuffle(locations)
-            loc_eps = np.sort(locations[:self.p_eps])
-            if self.p_empty != 0:
-                loc_zero = np.sort(locations[self.p_eps:-self.p_empty])
-                loc_empty = np.sort(locations[-self.p_empty:])
-            else:
-                loc_zero = np.sort(locations[self.p_eps:])
-                loc_empty = []
-            random_locations[i] = [loc_eps,loc_zero,loc_empty]
         
+        if self.p_eps != 0:
+            for i in np.arange(num_samples):
+                rng.shuffle(locations)
+                loc_eps = np.sort(locations[:self.p_eps])
+                if self.p_empty != 0:
+                    loc_zero = np.sort(locations[self.p_eps:-self.p_empty])
+                    loc_empty = np.sort(locations[-self.p_empty:])
+                else:
+                    loc_zero = np.sort(locations[self.p_eps:])
+                    loc_empty = []
+                random_locations[i] = [loc_eps,loc_zero,loc_empty]
+        else:
+            loc_eps = []
+            for i in np.arange(num_samples):
+                rng.shuffle(locations)
+                loc_zero = np.sort(locations[:self.p_zero])
+                if self.p_empty!=0:
+                    loc_empty = np.sort(locations[self.p_zero:])
+                else:
+                    loc_empty = []
+                random_locations[i] = [loc_eps,loc_zero,loc_empty]
+            
         # random_locations = [idx(LCSs),idx(RefSt),idx(Empty)]
         self.locations = random_locations
         
@@ -98,7 +109,7 @@ class randomPlacement():
             C[idx] = [C_eps,C_zero,C_empty]
         self.C = C
     
-    def design_metric(self,Psi,sigma_eps,sigma_zero,criteria='D_optimal'):
+    def Cov_metric(self,Psi,sigma_eps,sigma_zero,criteria='D_optimal',compute_empty=False):
         """
         Computes experiment design performance metric
         
@@ -112,6 +123,8 @@ class randomPlacement():
             variance of RefSt
         criteria: str
             experiemtn design criteria used to compute metric
+        compute_empty : bool
+            compute covariance matrix on non-monitored locations rather than on monitored ones
             
         Returns
         -------
@@ -119,23 +132,47 @@ class randomPlacement():
 
         """
         metric = {el:0 for el in np.arange(len(self.locations))}
+        if criteria not in ['D_optimal','E_optimal','WCS']:
+            print(f'Chosen criteria {criteria} is not valid.')
+            return
         
         for idx in self.locations.keys():
             C_eps = self.C[idx][0]
             C_zero = self.C[idx][1]
             C_empty = self.C[idx][2]
             
+            
             Theta_eps = C_eps@Psi
             Theta_zero = C_zero@Psi
-            try:
-                Cov = np.linalg.inv( (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero) ) 
-            except:
-                print(f'Computing pseudo-inverse for index {idx}')
-                Cov = np.linalg.pinv( (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero) )
+            Theta_empty = C_empty@Psi
+            if compute_empty and self.p_empty!=0:
+                try:
+                    Cov = np.linalg.inv( Theta_empty.T@Theta_empty ) 
+                except:
+                    print(f'Computing pseudo-inverse for index {idx}')
+                    Cov = np.linalg.pinv( Theta_empty.T@Theta_empty )
+                
+            else:
+            
+                if self.p_eps !=0:
+                    try:
+                        Cov = np.linalg.inv( (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero) ) 
+                    except:
+                        print(f'Computing pseudo-inverse for index {idx}')
+                        Cov = np.linalg.pinv( (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero) )
+                else:
+                    try:
+                        Cov = np.linalg.inv( sigma_zero**(-1)*Theta_zero.T@Theta_zero)
+                    except:
+                        print(f'Computing pseudo-inverse for index {idx}')
+                        Cov = np.linalg.pinv( sigma_zero**(-1)*Theta_zero.T@Theta_zero)
+                    
             if criteria == 'D_optimal':
                 metric[idx] = np.log(np.linalg.det(Cov))
             elif criteria == 'E_optimal':
                 metric[idx] = np.max(np.real(np.linalg.eig(Cov)[0]))
+            elif criteria == 'WCS':
+                metric[idx] = np.diag(Cov).max()
         
         self.criteria = criteria
         self.metric = metric
