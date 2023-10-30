@@ -8,6 +8,8 @@ Created on Mon Jul 17 17:21:04 2023
 import numpy as np
 import cvxpy as cp
 from scipy import linalg
+import pickle
+import time
 import warnings
 # =============================================================================
 # Sensor placement algorithms
@@ -109,16 +111,16 @@ class SensorPlacement:
         self.h_zero = h_zero
         self.problem = problem
     
-    def unmonitored_placement(self,Psi,alpha):
+    def rankMax_placement(self,Psi,alpha):
         """
         Sensor placement proposed heuristics for unmonitored locations (p_empty !=0)
-        Minimize the rank for reference stations locations while minimizing volume of ellipsoid for LCSs
+        Maximize the rank for reference stations locations while minimizing volume of ellipsoid for LCSs
 
         Parameters
         ----------
         Psi : np array
             Reduced basis of shape (number of locations, number of vectors)
-        alpha : flaot
+        alpha : float
             regularization parameter for rank minimization constraint
 
         Returns
@@ -128,8 +130,8 @@ class SensorPlacement:
         """
         h_eps = cp.Variable(shape=self.n,value=np.zeros(self.n))
         h_zero = cp.Variable(shape = self.n,value=np.zeros(self.n))
-        objective_eps = cp.log_det(cp.sum([h_eps[i]*(self.var_eps**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
-        objective_zero = alpha*cp.trace(cp.sum([h_zero[i]*(self.var_zero**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+        objective_eps = -1*cp.log_det(cp.sum([h_eps[i]*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+        objective_zero = -alpha*cp.trace(cp.sum([h_zero[i]*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
         objective = objective_eps + objective_zero
         constraints = [cp.sum(h_zero) == self.p_zero,
                        cp.sum(h_eps) == self.p_eps,
@@ -138,12 +140,13 @@ class SensorPlacement:
                        h_eps >=0,
                        h_eps <=1,
                        h_eps + h_zero <=1]
-        problem = cp.Problem(cp.Maximize(objective),constraints)
+        problem = cp.Problem(cp.Minimize(objective),constraints)
         if not problem.is_dcp():
             print('Problem not dcp\nCheck constraints and objective function')
         self.h_eps = h_eps
         self.h_zero = h_zero
         self.problem = problem
+        
         
     def DOptimal_placement(self,Psi):
         """
@@ -164,7 +167,7 @@ class SensorPlacement:
         h_eps = cp.Variable(shape=self.n,value=np.zeros(self.n))
         
         if self.p_eps != 0 and self.p_zero != 0: # there are LCSs and ref st.
-            objective = cp.log_det(cp.sum([h_eps[i]*(self.var_eps**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] + h_zero[i]*(self.var_zero**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+            objective = -1*cp.log_det(cp.sum([h_eps[i]*(self.var_eps**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] + h_zero[i]*(self.var_zero**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
             constraints = [cp.sum(h_zero) == self.p_zero,
                            cp.sum(h_eps) == self.p_eps,
                            h_zero >=0,
@@ -175,7 +178,7 @@ class SensorPlacement:
             
             
         elif self.p_eps == 0 and self.p_zero != 0:# there are no LCSs
-            objective = cp.log_det(cp.sum([h_zero[i]*(self.var_zero**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+            objective = -1*cp.log_det(cp.sum([h_zero[i]*(self.var_zero**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
             constraints = [cp.sum(h_zero) == self.p_zero,
                            h_zero >=0,
                            h_zero <= 1,
@@ -183,19 +186,37 @@ class SensorPlacement:
             
         
         elif self.p_eps != 0 and self.p_zero == 0:# there are no ref.st.
-            objective = cp.log_det(cp.sum([h_eps[i]*(self.var_eps**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+            objective = -1*cp.log_det(cp.sum([h_eps[i]*(self.var_eps**-1)*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
             constraints = [cp.sum(h_eps) == self.p_eps,
-                           h_zero >=0,
-                           h_zero <= 1,
+                           h_eps >=0,
+                           h_eps <= 1,
                            ]
             
             
-        problem = cp.Problem(cp.Maximize(objective),constraints)
+        problem = cp.Problem(cp.Minimize(objective),constraints)
         if not problem.is_dcp():
             print('Problem not dcp\nCheck constraints and objective function')
         self.h_eps = h_eps
         self.h_zero = h_zero
         self.problem = problem
+        
+    def KKT_placement(self,Psi):
+        """
+        D-optimal sensor placement using covariance matrix from KKT solution
+
+        Parameters
+        ----------
+        Psi : np array
+            Reduced basis of shape (number of locations, number of vectors)
+
+        Returns
+        -------
+        None.
+
+        """
+        h_zero = cp.Variable(shape = self.n,value=np.zeros(self.n))
+        h_eps = cp.Variable(shape=self.n,value=np.zeros(self.n))
+        #objective = cp.log_det()
         
     
     def check_consistency(self):
@@ -214,8 +235,10 @@ class SensorPlacement:
         """
         
         # check number of sensors consistency
-        if self.p_zero >self.r and self.p_eps!=0:
-            raise SensorsErrors(f'The number of reference stations is larger than the dimension of the low-rank basis {self.r}')
+        # if self.p_zero >self.r and self.p_eps!=0:
+        #     raise SensorsErrors(f'The number of reference stations is larger than the dimension of the low-rank basis {self.r}')
+        if self.p_empty + self.r > self.n:
+            raise SensorsErrors('Not enough sensors for basis sampling')
         if any(np.array([self.p_eps,self.p_zero,self.p_empty])<0):
             raise SensorsErrors('Negative number of sensors')
         if all(np.array([self.p_eps,self.p_zero,self.p_empty])>=0) and np.sum([self.p_eps,self.p_zero,self.p_empty]) != self.n:
@@ -227,13 +250,13 @@ class SensorPlacement:
         if self.algorithm == 'WCS':
             self.WCS_placement(Psi)
         
-        elif self.algorithm == 'unmonitored':
+        elif self.algorithm == 'rankMax':
             if self.p_empty == 0:
                 warnings.warn(f'Sensor placement algorithm is {self.algorithm} but there are {self.p_empty} unmonitored locations.')
                 input('Press Enter to continue...')
-                self.unmonitored_placement(Psi,alpha)
+                self.rankMax_placement(Psi,alpha)
             else:
-                self.unmonitored_placement(Psi,alpha)
+                self.rankMax_placement(Psi,alpha)
         
         elif self.algorithm == 'D_optimal':
             self.DOptimal_placement(Psi)
@@ -243,8 +266,43 @@ class SensorPlacement:
         
         self.check_consistency()
         
+            
+    def LoadLocations(self,dicts_path,alpha_reg,var_zero):
+        """
+        Load locations from previous training
+
+        Parameters
+        ----------
+        dicts_path : str
+            path to files
+        alpha_reg : flaot
+            regularization value
+        var_zero : float
+            refst covariance
+            
+        Returns
+        -------
+        self.dict_results : dict
+            (LCSs, ref.st,empty) locations
+
+        """
+        if self.algorithm == 'rankMax':
+            fname = dicts_path+f'DiscreteLocations_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_alpha{alpha_reg:.1e}.pkl'
+            with open(fname,'rb') as f:
+                self.dict_locations = pickle.load(f)
+            
+            fname = dicts_path+f'Weights_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_alpha{alpha_reg:.1e}.pkl'
+            with open(fname,'rb') as f:
+                self.dict_weights = pickle.load(f)
+        else:
+            fname = dicts_path+f'DiscreteLocations_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_varZero{self.var_zero:.1e}.pkl'
+            with open(fname,'rb') as f:
+                self.dict_locations = pickle.load(f)
+            
+            fname = dicts_path+f'Weights_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_varZero{self.var_zero:.1e}.pkl'
+            with open(fname,'rb') as f:
+                self.dict_weights = pickle.load(f)
         
-    
     def solve(self):
         """
         Solve sensor placement problem and print objective function optimal value
@@ -255,6 +313,7 @@ class SensorPlacement:
         None.
 
         """
+        time_init = time.time()
         print(f'Solving sensor placement using {self.algorithm} strategy')
         if self.algorithm == 'WCS':
             solver = cp.MOSEK
@@ -271,13 +330,16 @@ class SensorPlacement:
                     print(f'Optimal value: {self.problem.value}')
             except:
                 print('Problem not solved.\nIt is possible solver failed or problem status is unknown.')
+        time_end = time.time()
+        self.exec_time = time_end - time_init
         # print(f'Weights disitrubtion\nLCSs:')
         # print(*np.round(self.h_eps.value,3),sep='\n')
         # print(f'Reference stations:')
         # print(*np.round(self.h_zero.value,3),sep='\n')
         
-    def convertSolution(self):
+    def discretize_solution(self):
         """
+        Convert continuous weights [0,1] to discrete values {0,1}
         Get maximum entries of h and use those locations to place sensors
 
         Returns
@@ -285,10 +347,14 @@ class SensorPlacement:
         None.
 
         """
-        if self.p_zero == 0:
+        if self.h_eps.value.sum() == 0.0 and self.h_zero.value.sum() == 0.0: # placement failure
+            order_zero, order_eps = np.zeros(self.n), np.zeros(self.n)
+        elif self.p_zero == 0:# no ref.st.
+            print('Location for no Reference stations')
             order_zero = []
             order_eps = np.sort(np.argsort(self.h_eps.value)[-self.p_eps:])
-        elif self.p_eps == 0:
+        elif self.p_eps == 0:# no LCSs
+            print('Location for no LCSs')
             order_zero = np.sort(np.argsort(self.h_zero.value)[-self.p_zero:])
             order_eps = []
         else:
@@ -302,6 +368,31 @@ class SensorPlacement:
             order_eps = [i for i in np.arange(self.n) if i not in order_zero]
             
         self.locations = [order_eps,order_zero,order_empty]
+    
+    def compute_Doptimal(self,Psi,alpha):
+        """
+        Computes D-optimal metric of continuous index obtained from rankMin_reg solution
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis.
+        alpha : float
+            reference station rank regularization parameter
+
+        Returns
+        -------
+        None.
+
+        """
+        precision_matrix = (self.var_eps**-1)*Psi.T@np.diag(self.h_eps.value)@Psi + (self.var_zero**-1)*Psi.T@np.diag(self.h_zero.value)@Psi
+        self.Dopt_metric = -1*np.log(np.linalg.det(precision_matrix))
+        
+        self.logdet_eps = np.log(np.linalg.det(Psi.T@np.diag(self.h_eps.value)@Psi))
+        self.trace_zero = alpha*np.trace(Psi.T@np.diag(self.h_zero.value)@Psi)
+        
+        
+                
         
     def C_matrix(self):
         """
@@ -324,9 +415,9 @@ class SensorPlacement:
             C_empty = []
         self.C = [C_eps,C_zero,C_empty]
 
-    def covariance_matrix(self,Psi,metric,alpha=0.1):
+    def covariance_matrix(self,Psi,metric,alpha=0.1,activate_error_solver=True):
         """
-        Compute covariance matrix from C matrices
+        Compute covariance matrix from C matrices and compute a metric
 
         Parameters
         ----------
@@ -334,6 +425,8 @@ class SensorPlacement:
             low-rank basis used
         metric : str
             metric to compute covariance optimizality: D-optimal, E-optimal, WCS
+        alpha: float
+            regularization parameter for proposed algorithm
 
         Returns
         -------
@@ -346,32 +439,71 @@ class SensorPlacement:
         Theta_eps = C_eps@Psi
         Theta_zero = C_zero@Psi
         if self.p_eps !=0:
-        
+            self.Precision_matrix = (self.var_eps**(-1)*Theta_eps.T@Theta_eps) + (self.var_zero**(-1)*Theta_zero.T@Theta_zero)
             try:
-                self.Cov = np.linalg.inv( (self.var_eps**(-1)*Theta_eps.T@Theta_eps) + (self.var_zero**(-1)*Theta_zero.T@Theta_zero) ) 
+                self.Cov = np.linalg.inv( self.Precision_matrix ) 
             except:
                 print('Computing pseudo-inverse')
-                self.Cov = np.linalg.pinv( (self.var_eps**(-1)*Theta_eps.T@Theta_eps) + (self.var_zero**(-1)*Theta_zero.T@Theta_zero) )
+                self.Cov = np.linalg.pinv( self.Precision_matrix )
         
         else:
+            self.Precision_matrix = (self.var_zero**(-1)*Theta_zero.T@Theta_zero)
             try:
-                self.Cov = np.linalg.inv(self.var_zero**(-1)*Theta_zero.T@Theta_zero)
+                self.Cov = np.linalg.inv(self.Precision_matrix)
             except:
                 print('Computing pseudo-inverse')
-                self.Cov = np.linalg.pinv(self.var_zero**(-1)*Theta_zero.T@Theta_zero)
+                self.Cov = np.linalg.pinv(self.Precision_matrix)
         
-        if metric == 'D_optimal':
+        # compute cov-matrix metric
+        
+        if metric == 'logdet':
             self.metric = np.log(np.linalg.det(self.Cov))
-        elif metric == 'E_optimal':
+            self.metric_precisionMatrix = np.log(np.linalg.det(self.Precision_matrix))
+            
+        elif metric == 'eigval':
             self.metric = np.max(np.real(np.linalg.eig(self.Cov)[0]))
+            self.metric_precisionMatrix = np.min(np.real(np.linalg.eig(self.Precision_matrix)[0]))
+            
         elif metric == 'WCS':
             self.metric = np.diag(self.Cov).max()
-        elif metric == 'Proposed_algorithm':
+        
+        elif metric == 'logdet_rank':
             self.metric = np.log(np.linalg.det(self.var_eps**(-1)*Theta_eps.T@Theta_eps)) + alpha*np.trace(self.var_zero**(-1)*Theta_zero.T@Theta_zero)
             
+        if activate_error_solver:
+            if type(self.problem.value) == type(None):# error when solving
+                self.metric = np.inf
+                self.metric_precisionMatrix = -np.inf
         
-        if type(self.problem.value) == type(None):# error when solving
-            self.metric = -1
+    def beta_estimated_GLS(self,Psi,y_refst,y_lcs):
+        """
+        Compute estimated regressor (beta) from sensor measurements
+
+        Parameters
+        ----------
+        Psi : numpy array
+            sparse basis
+        y_refst : numpy array
+            reference stations vector of measurements
+        y_lcs : numpy array
+            LCSs vector of measurements
+
+        Returns
+        -------
+        self.beta_hat : numpy array
+                estimated regressor
+                Regressor evolution over time (r,num_samples)
+
+        """
+        C_eps = self.C[0]
+        C_zero = self.C[1]
+        Theta_eps = C_eps@Psi
+        Theta_zero = C_zero@Psi
+        second_term = (self.var_zero**-1)*Theta_zero.T@y_refst + (self.var_eps**-1)*Theta_eps.T@y_lcs
+        self.beta_hat = self.Cov@second_term
+        
+        
+        
         
         
         
@@ -385,6 +517,6 @@ if __name__ == '__main__':
     sensor_placement = SensorPlacement(algorithm, n, r, p_zero, p_eps, p_empty, var_eps, var_zero)
     sensor_placement.initialize_problem(Psi)
     sensor_placement.solve()
-    sensor_placement.convertSolution()
+    sensor_placement.discretize_solution()
     sensor_placement.C_matrix()
     sensor_placement.covariance_matrix(Psi)
