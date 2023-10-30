@@ -46,7 +46,7 @@ class LowRankBasis():
         
         avg = np.mean(self.snapshots_matrix,axis=1)
         std = np.std(self.snapshots_matrix,axis=1)
-        self.snapshots_matrix_centered = (self.snapshots_matrix - avg[:,None])/(std[:,None])
+        self.snapshots_matrix_centered = (self.snapshots_matrix - avg[:,None])#/(std[:,None])
         
     
     def low_rank_decomposition(self,normalize=True):

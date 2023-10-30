@@ -305,6 +305,11 @@ if __name__ == '__main__':
     num_random_placements = 100
     solving_algorithm = 'D_optimal' #['D_optimal','rankMax']
     placement_metric = 'logdet'
+
+    # lowrank_basis = LRB.LowRankBasis(dataset.ds_train, r)
+    # lowrank_basis.snapshots_matrix()
+    # lowrank_basis.low_rank_decomposition(normalize=True)    
+    # dataset.project_basis(lowrank_basis.Psi)
     
     
     plt.close('all')
