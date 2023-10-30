@@ -7,6 +7,7 @@ Created on Wed Jul 12 11:01:55 2023
 """
 import numpy as np
 from scipy import linalg
+from sklearn.metrics import mean_absolute_error,mean_squared_error
 # ===================================================================================
 # Random sensor placement: generate random placement locations for (LCSs,RefSt,Empty)
 # ===================================================================================
@@ -132,7 +133,10 @@ class randomPlacement():
 
         """
         metric = {el:0 for el in np.arange(len(self.locations))}
-        if criteria not in ['D_optimal','E_optimal','WCS']:
+        metric_precisionMat = {el:0 for el in np.arange(len(self.locations))}
+        Covariances = {el:0 for el in np.arange(len(self.locations))}
+        
+        if criteria not in ['logdet','eigval','WCS']:
             print(f'Chosen criteria {criteria} is not valid.')
             return
         
@@ -146,36 +150,130 @@ class randomPlacement():
             Theta_zero = C_zero@Psi
             Theta_empty = C_empty@Psi
             if compute_empty and self.p_empty!=0:
+                Precision_matrix = Theta_empty.T@Theta_empty
                 try:
-                    Cov = np.linalg.inv( Theta_empty.T@Theta_empty ) 
+                    Cov = np.linalg.inv( Precision_matrix ) 
                 except:
                     print(f'Computing pseudo-inverse for index {idx}')
-                    Cov = np.linalg.pinv( Theta_empty.T@Theta_empty )
+                    Cov = np.linalg.pinv( Precision_matrix )
                 
             else:
             
                 if self.p_eps !=0:
+                    Precision_matrix = (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero)
                     try:
-                        Cov = np.linalg.inv( (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero) ) 
+                        Cov = np.linalg.inv( Precision_matrix ) 
                     except:
                         print(f'Computing pseudo-inverse for index {idx}')
-                        Cov = np.linalg.pinv( (sigma_eps**(-1)*Theta_eps.T@Theta_eps) + (sigma_zero**(-1)*Theta_zero.T@Theta_zero) )
+                        Cov = np.linalg.pinv( Precision_matrix )
                 else:
+                    Precision_matrix = sigma_zero**(-1)*Theta_zero.T@Theta_zero
                     try:
-                        Cov = np.linalg.inv( sigma_zero**(-1)*Theta_zero.T@Theta_zero)
+                        Cov = np.linalg.inv(Precision_matrix)
                     except:
                         print(f'Computing pseudo-inverse for index {idx}')
-                        Cov = np.linalg.pinv( sigma_zero**(-1)*Theta_zero.T@Theta_zero)
-                    
-            if criteria == 'D_optimal':
+                        Cov = np.linalg.pinv( Precision_matrix)
+            
+            Covariances[idx] = Cov
+            if criteria == 'logdet':
                 metric[idx] = np.log(np.linalg.det(Cov))
-            elif criteria == 'E_optimal':
+                metric_precisionMat[idx] = np.log(np.linalg.det(Precision_matrix))
+            elif criteria == 'eigval':
                 metric[idx] = np.max(np.real(np.linalg.eig(Cov)[0]))
+                metric_precisionMat[idx] = np.max(np.real(np.linalg.eig(Precision_matrix)[0]))
+                
             elif criteria == 'WCS':
                 metric[idx] = np.diag(Cov).max()
         
         self.criteria = criteria
         self.metric = metric
+        self.metric_precisionMat = metric_precisionMat
+        self.Covariances = Covariances
+    
+    def perturbate_signal(self,ds_signal,variance,seed):
+        rng = np.random.default_rng(seed)
+        noise = rng.normal(loc=0.0,scale=variance,size=ds_signal.shape)
+        return ds_signal+noise
+    
+    def beta_estimated(self,Psi,ds_estimation,var_eps,var_zero):
+        """
+        Compute GLS estimated regressor
+
+        Parameters
+        ----------
+        Psi : np array
+            low-rank basis
+        ds_estimation : pandas dataframe
+            dataset for estimation
+        var_eps : float
+            LCSs variance
+        var_zero : float
+            Ref.St. variance
+
+        Returns
+        -------
+        None.
+
+        """
+        self.beta_hat = {el:0 for el in np.arange(len(self.locations))}
+        for idx in self.locations.keys():
+            C_eps = self.C[idx][0]
+            C_zero = self.C[idx][1]
+            
+            Theta_eps = C_eps@Psi
+            Theta_zero = C_zero@Psi
+            
+            Cov = self.Covariances[idx]
+            
+            locations = self.locations[idx]
+            
+            y_refst = self.perturbate_signal(ds_estimation.loc[:,locations[1]], var_zero*15, seed=idx)
+            y_lcs = self.perturbate_signal(ds_estimation.loc[:,locations[0]], var_eps*15, seed=idx)
+            #y_refst = ds_estimation.loc[:,locations[1]]
+            #y_lcs = ds_estimation.loc[:,locations[0]]
+            
+            second_term = (var_zero**-1)*Theta_zero.T@y_refst.T + (var_eps**-1)*Theta_eps.T@y_lcs.T
+            self.beta_hat[idx] = Cov@second_term
+            
+    def estimation(self,Psi,ds_estimation,var_eps,var_zero,locations_to_estimate='empty'):
+        self.rmse = {el:0 for el in np.arange(len(self.locations))}
+        self.mae = {el:0 for el in np.arange(len(self.locations))}
+       
+        for idx in self.locations.keys():
+            locations = self.locations[idx]
+            if locations_to_estimate == 'empty':
+                l = 2
+                y_estimation = ds_estimation.loc[:,locations[l]]
+                C_estimation = self.C[idx][l]
+            elif locations_to_estimate == 'LCSs':
+                l = 0
+                var_noise = var_eps
+                y_estimation = self.perturbate_signal(ds_estimation.loc[:,locations[l]], var_noise*15, seed=idx)
+                C_estimation = self.C[idx][l]
+            elif locations_to_estimate == 'RefSt':
+                l = 1
+                var_noise = var_zero
+                y_estimation = self.perturbate_signal(ds_estimation.loc[:,locations[l]], var_noise*15, seed=idx)
+                C_estimation = self.C[idx][l]
+            else:
+                y_estimation = ds_estimation
+                C_estimation = np.identity(ds_estimation.shape[1])
+                
+            
+            # format tabular dataset
+            y_hat = C_estimation@Psi@self.beta_hat[idx]
+            y_pred = y_hat.T
+            y_pred.columns = y_estimation.columns
+                        
+            self.rmse[idx] = np.sqrt(mean_squared_error(y_estimation, y_pred))
+            self.mae[idx] = mean_absolute_error(y_estimation, y_pred)
+            
+            
+            
+            
+            
+            
+        
         
 if __name__=='__main__':
     print('Testing')

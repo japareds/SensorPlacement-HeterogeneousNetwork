@@ -8,11 +8,12 @@ Created on Wed Jul 12 12:06:07 2023
 import os
 import pandas as pd
 import numpy as np
+import pickle
 # =============================================================================
 # Network data set
 # =============================================================================
 class DataSet():
-    def __init__(self,pollutant,start_date,end_date,files_path):
+    def __init__(self,pollutant,start_date,end_date,files_path,source='real'):
         """
         Network reference stations. Each station has an assigned ID
 
@@ -26,6 +27,8 @@ class DataSet():
             end date of measurements in 'YYYY-MM-DD'
         files_path: str
             path to files
+        source: str
+            Use real or synthetic dataset
             
         Returns
         -------
@@ -89,9 +92,15 @@ class DataSet():
         self.startDate = start_date 
         self.endDate = end_date 
         self.ds = pd.DataFrame()
-        self.files_path = files_path
         
-    def load_dataSet(self):
+        self.source = source
+        
+        if source == 'real':
+            self.files_path = files_path
+        else:
+            self.files_path = files_path+'SyntheticDataSet/'
+        
+    def load_dataSet(self,n_years=12,n_stations=100):
         """
         Load csv files containing reference stations measurements for specified period of time
 
@@ -101,14 +110,60 @@ class DataSet():
             dataframe containing measurements: [num_dates x num_stations]
 
         """
-        for rs in self.RefStations:
-            fname = f'{self.files_path}{self.pollutant}_{rs}_{self.startDate}_{self.endDate}.csv'
-            print(f'Loading data set {fname}')
-            df_ = pd.read_csv(fname,index_col=0,sep=';')
-            df_.index = pd.to_datetime(df_.index)
-            self.ds = pd.concat([self.ds,df_],axis=1)
-        self.ds = self.ds.drop_duplicates(keep='first')
+        # load real dataset
+        if self.source == 'real':
+            for rs in self.RefStations:
+                fname = f'{self.files_path}{self.pollutant}_{rs}_{self.startDate}_{self.endDate}.csv'
+                print(f'Loading data set {fname}')
+                df_ = pd.read_csv(fname,index_col=0,sep=';')
+                df_.index = pd.to_datetime(df_.index)
+                self.ds = pd.concat([self.ds,df_],axis=1)
+            self.ds = self.ds.drop_duplicates(keep='first')
+        
+        # load synthetic dataset
+        elif self.source == 'synthetic':
+            fname = f'{self.files_path}{self.pollutant}_SyntheticData_{self.startDate}_{self.endDate}_{n_stations}stations.pkl'
+            with open(fname,'rb') as f:
+                self.ds = pickle.load(f)
+
+         
+            
+            
+            
         print(f'All data sets loaded\n{self.ds.shape[0]} measurements for {self.ds.shape[1]} reference stations')
+            
+            
+    def train_test_split(self,train_set_end,val_set_begin,val_set_end,test_set_begin):
+        """
+        Split dataset into training, validation, and testing set.
+        The end of training set, the start and end of validation and the end of testing set must be specified
+        Dates format: 'yyyy-mm-dd hh:mm:ss'
+        
+        Parameters
+        ----------
+        train_set_end : str
+                        date of last training set measurement
+        val_set_begin : str
+                        date of first validation set measurement
+        val_set_end : str
+                        date of last validation set measurement
+        test_set_begin : str
+                        date of first test set measurement
+
+        Returns
+        -------
+        self.ds_train : pandas dataframe
+                        Training set dataset
+        self.ds_val : pandas dataframe
+                        Validation set dataset
+        self.ds_test : pandas dataframe
+                        Testing set dataset
+
+        """
+        self.ds_train = self.ds.loc[:train_set_end].copy()
+        self.ds_val = self.ds.loc[val_set_begin:val_set_end].copy()
+        self.ds_test = self.ds.loc[test_set_begin:].copy()
+        
         
     def cleanMissingvalues(self,strategy='remove',tol=0.1):
         """

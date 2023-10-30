@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 12 12:54:16 2023
+Created on Wed Oct 25 13:42:32 2023
 
 @author: jparedes
 """
+
+
 import os
 import numpy as np
 import scipy.stats
@@ -16,88 +18,226 @@ import randomPlacement as RP
 import SensorPlacement as SP
 import Plots
 
-# =============================================================================
-# Sensor placement for heterogeneous monitoring networks
-# =============================================================================
-def mean_confidence_interval(data, confidence=0.95):
-    a = 1.0 * np.array(data)
-    n = len(a)
-    m, se = np.mean(a), scipy.stats.sem(a)
-    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
-    return m, m-h, m+h
+import compute_weights as CW
+import validationTest as VT
+import Estimation
+import matplotlib.pyplot as plt
+
+class PlacementSolutions():
+    def __init__(self,Dopt_path,rank_path):
+        self.Dopt_path = Dopt_path
+        self.rank_path = rank_path
+        
+    def compute_logdet_configuration(self,num_random_placements,ds,r,n,p_zero,p_empty,save_fig):
+        lowrank_basis = LRB.LowRankBasis(ds, r)
+        lowrank_basis.snapshots_matrix()
+        lowrank_basis.low_rank_decomposition(normalize=True)
+        
+        variances = [1e-6,1e-4,1e-2,1e-1,1e0]
+        dict_logdet_Dopt_var = {el:np.inf for el in variances}
+        dict_logdet_rankMax_var = {el:np.inf for el in variances}
+        dict_logdet_random_var = {el:np.inf for el in variances}
+        fname = Dopt_path+f'randomPlacement_locations_r{r}_pEmpty{p_empty}_numRandomPlacements{num_random_placements}.pkl'
+        with open(fname,'rb') as f:
+            dict_random_locations = pickle.load(f)
+            
+        for var in variances:
+            # random
+            random_placement = RP.randomPlacement(n-(p_zero+p_empty),p_zero,p_empty,n)
+            random_placement.locations = dict_random_locations[p_zero]
+            random_placement.C_matrix()
+            random_placement.Cov_metric(lowrank_basis.Psi, var_eps, var,placement_metric)
+            dict_logdet_random_var[var] = np.min([i for i in random_placement.metric.values()])
+            
+            # Doptimal
+            sensor_placement = SP.SensorPlacement('D_optimal', n, r, p_zero,n-(p_zero+p_empty),
+                                                  p_empty, var_eps, var)
+            
+            sensor_placement.initialize_problem(lowrank_basis.Psi,alpha_reg)
+            sensor_placement.LoadLocations(Dopt_path, alpha_reg, var)
+            
+            sensor_placement.locations = sensor_placement.dict_locations[p_zero]
+            sensor_placement.weights = sensor_placement.dict_weights[p_zero]
+          
+            if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
+                print(f'No solution found for Dopt with {p_zero} reference stations\n')
+                
+            
+           
+            sensor_placement.C_matrix()
+            sensor_placement.covariance_matrix(lowrank_basis.Psi,metric=placement_metric,activate_error_solver=False)
+            dict_logdet_Dopt_var[var] = sensor_placement.metric
+            
+            # rankMax
+            sensor_placement = SP.SensorPlacement('rankMax', n, r, p_zero,n-(p_zero+p_empty),
+                                                  p_empty, var_eps, var)
+            
+            sensor_placement.initialize_problem(lowrank_basis.Psi,alpha_reg)
+            sensor_placement.LoadLocations(rank_path, alpha_reg, var)
+            
+            sensor_placement.locations = sensor_placement.dict_locations[p_zero]
+            sensor_placement.weights = sensor_placement.dict_weights[p_zero]
+          
+            if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
+                print(f'No solution found for Dopt with {p_zero} reference stations\n')
+                
+            
+          
+            sensor_placement.C_matrix()
+            sensor_placement.covariance_matrix(lowrank_basis.Psi,metric=placement_metric,activate_error_solver=False)
+            dict_logdet_rankMax_var[var] = sensor_placement.metric
+            
+        
+        plots.plot_logdet_vs_variances(dict_logdet_random_var, dict_logdet_Dopt_var, dict_logdet_rankMax_var,
+                                       r, n, p_zero, p_empty,save_fig)    
+        
+    def show_histograms(self,r,n,p_empty,p_zero_plot,alpha_reg,solving_algorithm,save_fig):
+        plots.plot_locations_evolution(self.Dopt_path,self.rank_path,
+                                       r,n,p_empty,p_zero_plot,alpha_reg,save_fig=save_fig)
+        plots.plot_weights_evolution(Dopt_path,rank_path,r,n,p_empty,solving_algorithm,p_zero_plot,alpha_reg)
+        plots.plot_locations_rankMax_alpha(self.rank_path,r,n,p_empty,p_zero_plot,save_fig=save_fig)
+        
+    def compute_solver_failures(self,r,p_empty,n,var_zero):
+        count = 0
+        fname = self.Dopt_path+f'Weights_D_optimal_vs_p0_r{r}_pEmpty{p_empty}_varZero{var_zero:.1e}.pkl'
+        with open(fname,'rb') as f:
+            dict_weights = pickle.load(f)
+    
+        for p_zero in np.arange(1,n-p_empty+1,1):
+            
+            weights_lcs = dict_weights[p_zero][0]
+            weights_refst = dict_weights[p_zero][1]
+            
+            if weights_lcs.sum() == 0.0 and weights_refst.sum() == 0.0:
+                count+=1
+                print(f'Solver failed for {p_zero} reference stations')
+                
+        print(f'Solver failed for {count} iterations')
+        
+        
 
 if __name__ == '__main__':
     abs_path = os.path.dirname(os.path.realpath(__file__))
     files_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Files/'
     results_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Results/'
     
+    # dataset to use
     print('Loading data set')
     pollutant = 'O3'
     start_date = '2011-01-01'
     end_date = '2022-12-31'
+    dataset_source = 'synthetic' #['synthetic','real']
     
-    dataset = DS.DataSet(pollutant, start_date, end_date, files_path)
+    dataset = DS.DataSet(pollutant, start_date, end_date, files_path,source=dataset_source)
     dataset.load_dataSet()
     dataset.cleanMissingvalues(strategy='stations',tol=0.1)
     dataset.cleanMissingvalues(strategy='remove')
     
+    # train/val/test split
+    train_set_end = '2020-12-31 23:00:00'
+    val_set_begin = '2021-01-01 00:00:00'
+    val_set_end = '2021-12-31 23:00:00'
+    test_set_begin = '2022-01-01 00:00:00'
+    dataset.train_test_split(train_set_end, val_set_begin, val_set_end,test_set_begin)
+    
     # network parameters
     n = dataset.ds.shape[1]
-    r = 34
-    p_empty = 10
-    var_eps,var_zero = 1,1*1e-2
-    solving_algorithm = 'D_optimal'
-    placement_metric = 'D_optimal'
+    r = 54 if dataset_source == 'synthetic' else 34
+    p_empty = int(n*0.4)
+    var_eps,var_zero = 1,1e0
+    alpha_reg = 1e-1
+    num_random_placements = 100
+    solving_algorithm = 'D_optimal' #['D_optimal','rankMax']
+    placement_metric = 'logdet'
     
-    # obtain data-driven basis
-    lowrank_basis = LRB.LowRankBasis(dataset.ds, r)
-    lowrank_basis.snapshots_matrix()
-    lowrank_basis.low_rank_decomposition(normalize=True)
-    plots = Plots.Plots(save_path=results_path,show_plots=False)
-    fig_singularValues, fig_singularValues_cumSum = plots.plot_singular_values(lowrank_basis.S,save_fig=True)
-
-    dict_results_random = {el:0 for el in np.arange(0,r+1,1)}
-    dict_results = {el:0 for el in np.arange(0,r+1,1)}
-    for p_zero in np.arange(0,r+1,1):
+    
+    plt.close('all')
+    place_sensors = False
+    if place_sensors:
+        print('Sensor placement\nCompute weights and locations')
+        placement = CW.Placement(n, p_empty, r, dataset.ds_train, solving_algorithm, 
+                                 var_eps, var_zero, num_random_placements, alpha_reg)
+        placement.placement_allStations()
+        placement.save_results(results_path)
+    else:
+        Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
+        rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
+        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=7,fs_legend=3,fs_title=10,show_plots=True)
         
-        p_eps = n-(p_zero+p_empty)
+        plt.close('all')
+        p_zero_plot = 20
         
-        print(f'Network description\n{n} locations in total\n{p_zero} locations for reference stations\n{p_eps} locations for LCSs\n{p_empty} locations unmonitored\n{var_zero} variance of reference stations\n{var_eps} variance of LCSs')
-        print(f'Low rank basis\nr={r}')
+        placement_solutions = PlacementSolutions(Dopt_path, rank_path)
+        placement_solutions.compute_solver_failures(r,p_empty,n,1e-6)
+        placement_solutions.compute_logdet_configuration(num_random_placements,dataset.ds_train,
+                                                         r,n,p_zero_plot,p_empty,save_fig=True)
+        placement_solutions.show_histograms(r, n, p_empty, p_zero_plot, 1e-1, solving_algorithm,save_fig=False)
         
-        print('Random sensor placement')
-        random_placement = RP.randomPlacement(p_eps,p_zero,p_empty,n)
-        random_placement.place_sensors(num_samples=100,random_seed=92)
-        random_placement.C_matrix()
-        random_placement.Cov_metric(lowrank_basis.Psi, var_eps, var_zero,criteria=placement_metric)
         
-        print('Sensor placement algorithm')
-        if p_empty != 0:
-            sensor_placement = SP.SensorPlacement(solving_algorithm, n, r, p_zero, p_eps, p_empty, var_eps, var_zero)
+  
+        
+    validate = False
+    if validate:
+        print(f'Validation {placement_metric} results on hold-out dataset')
+        if dataset_source == 'real':
+            train_path = results_path+f'Unmonitored_locations/Training_Testing_split/TrainingSet_results/{solving_algorithm}/'
         else:
-            sensor_placement = SP.SensorPlacement('D_optimal', n, r, p_zero, p_eps, p_empty, var_eps, var_zero)
-        sensor_placement.initialize_problem(lowrank_basis.Psi,alpha=1e-1)
-        sensor_placement.solve()
-        sensor_placement.convertSolution()
-        # sensor_placement.locations[0] = [i for i in range(n) if i not in sensor_placement.locations[1]]
-        # sensor_placement.p_eps = n - sensor_placement.p_zero
-        sensor_placement.C_matrix()
-        sensor_placement.covariance_matrix(lowrank_basis.Psi,metric=placement_metric)
+            train_path = results_path+f'Synthetic_Data/TrainingSet_results/{solving_algorithm}/'
         
-        results_random = np.array([i for i in random_placement.metric.values()])
-        results_sensorplacement = sensor_placement.metric
+        validation = VT.Validate(n,p_empty,r,alpha_reg,
+                              dataset.ds_val, train_path,
+                              num_random_placements,
+                              var_eps, var_zero,
+                              placement_metric,solving_algorithm)
+        
+        validation.compute_validation()
+        validation.save_results(results_path)
+    else:
+        p_zero_plot = 30
+        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_legend=4,fs_title=10,show_plots=False)
         
         
-        dict_results_random[p_zero] = [results_random.mean(),results_random.min(),results_random.max()]
-        dict_results[p_zero] = results_sensorplacement
+    estimate = True
+    if estimate:
+        Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
+        rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
+       
+        p_zero_estimate = 20
+        ds_estimation = dataset.ds_train
+        locations_to_estimate='All'
+        variances = [1e-6,1e-4,1e-2,1e-1,1e0]
+        dict_rmse_var = {el:np.inf for el in variances}
+        for var in variances:
+            estimation = Estimation.Estimation(n, r, p_empty,p_zero_estimate, var_eps, var, num_random_placements, alpha_reg, 
+                                               solving_algorithm, placement_metric, ds_estimation, 
+                                               Dopt_path, rank_path, locations_to_estimate)
+            
+        
+        
+        
+            estimation.random_placement_estimation(rank_path)
+            estimation.Dopt_placement_estimation()
+            estimation.rankMax_placement_estimation()
+            dict_rmse_var[var] = [estimation.rmse_best_random,estimation.rmse_Dopt,estimation.rmse_rankMax]
+        
+        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=8,fs_legend=6,fs_title=10,show_plots=True)
+        plots.plot_rmse_vs_variances(dict_rmse_var,p_zero_estimate,p_empty,n,r,
+                                     metric='RMSE',locations_estimated=locations_to_estimate,save_fig=True)
+        #estimation.compute_estimations()
+        #estimation.save_results(results_path)
     
-    fname = results_path+f'{placement_metric}_metric_vs_p0_r{r}_sigmaZero{var_zero}_unmonitored2class_pEmpty{p_empty}.pkl'
-    with open(fname,'wb') as f:
-        pickle.dump(dict_results,f)
+    else:
+        # Dopt_path = results_path+'Synthetic_Data/TestingSet_results/Doptimal/'
+        # rank_path = results_path+'Synthetic_Data/TestingSet_results/rankMax/'
         
-    fname = results_path+f'randomPlacement_{placement_metric}_metric_vs_p0_r{r}_sigmaZero{var_zero}_unmonitored_pEmpty{p_empty}.pkl'
-    with open(fname,'wb') as f:
-        pickle.dump(dict_results_random,f)
+        # Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
+        # rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
+        
+        
+        # plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=8,fs_legend=6,fs_title=10,show_plots=True)
+        # plots.plot_rmse_vs_variances(Dopt_path,rank_path,r,p_empty,p_zero_plot,n,alpha_reg,metric='RMSE',
+        #                              locations_to_estimate='empty',save_fig=False)
+       
+        print('---')
     
-    
-
+  
