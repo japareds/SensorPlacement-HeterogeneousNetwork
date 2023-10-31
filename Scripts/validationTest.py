@@ -84,7 +84,7 @@ class Validate():
             sensor_placement.initialize_problem(lowrank_basis.Psi,self.alpha_reg)
             
             # use weights and locations from file
-            sensor_placement.LoadLocations(self.train_path,self.alpha_reg)
+            sensor_placement.LoadLocations(self.train_path,self.alpha_reg,self.var_zero)
             sensor_placement.locations = sensor_placement.dict_locations[p_zero]
             sensor_placement.weights = sensor_placement.dict_weights[p_zero]
             

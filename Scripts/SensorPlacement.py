@@ -414,6 +414,23 @@ class SensorPlacement:
         else:
             C_empty = []
         self.C = [C_eps,C_zero,C_empty]
+        
+    def compute_convex_covariance_matrix(self,Psi,weights,var_zero,var_eps,metric='logdet'):
+        C_eps = np.diag(weights[0])
+        C_refst = np.diag(weights[1])
+        Theta_eps = C_eps@Psi
+        Theta_refst = C_refst@Psi
+        
+        Precision_matrix = (var_eps**(-1)*Theta_eps.T@Theta_eps) + (var_zero**(-1)*Theta_refst.T@Theta_refst)
+        try:
+            self.Cov_convex = np.linalg.inv(Precision_matrix) 
+        except:
+            print('Computing pseudo-inverse')
+            self.Cov_convex = np.linalg.pinv(Precision_matrix)
+        
+        if metric=='logdet':
+            self.metric_convex = np.log(np.linalg.det(self.Cov_convex))
+        
 
     def covariance_matrix(self,Psi,metric,alpha=0.1,activate_error_solver=True):
         """
@@ -474,6 +491,38 @@ class SensorPlacement:
             if type(self.problem.value) == type(None):# error when solving
                 self.metric = np.inf
                 self.metric_precisionMatrix = -np.inf
+                
+    def covariance_matrix_limit(self,Psi):
+        """
+        Compute covariance matrix in the limit var_zero = 0
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+
+        Returns
+        -------
+        None.
+
+        """
+        C_eps = self.C[0]
+        C_zero = self.C[1]
+        Theta_eps = C_eps@Psi
+        Theta_zero = C_zero@Psi
+        
+        refst_matrix = Theta_zero.T@Theta_zero
+        refst_pinv = np.linalg.pinv(refst_matrix)
+        
+        lcs_matrix = Theta_eps.T@Theta_eps
+        lcs_pinv = np.linalg.pinv(lcs_matrix)
+        
+        
+        Is = np.identity(self.r)
+        term = Is - refst_matrix@refst_pinv
+        self.Cov = term@lcs_pinv@term
+        
+        
         
     def beta_estimated_GLS(self,Psi,y_refst,y_lcs):
         """
@@ -501,6 +550,39 @@ class SensorPlacement:
         Theta_zero = C_zero@Psi
         second_term = (self.var_zero**-1)*Theta_zero.T@y_refst + (self.var_eps**-1)*Theta_eps.T@y_lcs
         self.beta_hat = self.Cov@second_term
+        
+        
+    def beta_estimated_limit(self,Psi,y_refst,y_lcs):
+        """
+        Compute estimated regressor (beta) from sensor measurements
+        in the limit variances refst goes to zero (limit of GLS)
+
+        Parameters
+        ----------
+        Psi : numpy array
+            sparse basis
+        y_refst : numpy array
+            reference stations vector of measurements
+        y_lcs : numpy array
+            LCSs vector of measurements
+
+        Returns
+        -------
+        self.beta_hat : numpy array
+                estimated regressor over time (r,num_samples)
+
+        """
+        C_eps = self.C[0]
+        C_zero = self.C[1]
+        Theta_eps = C_eps@Psi
+        Theta_zero = C_zero@Psi
+        
+        refst_pinv = np.linalg.pinv(Theta_zero.T@Theta_zero)
+        lcs_pinv = np.linalg.pinv(Theta_eps.T@Theta_eps)
+        Is = np.identity(self.r)
+        
+        P = Is - Theta_zero.T@Theta_zero@refst_pinv
+        self.beta_hat = P@lcs_pinv@P@Theta_eps.T@y_lcs + np.linalg.pinv(Theta_zero)@y_refst
         
         
         

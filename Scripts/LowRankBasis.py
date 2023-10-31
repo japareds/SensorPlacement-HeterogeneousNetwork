@@ -67,7 +67,7 @@ class LowRankBasis():
             
         print(f'Snapshots matrix created: {X_.shape[1]} measurements of vector space {X_.shape[0]}')
         print(f'Matrix size in memory {X_.__sizeof__()} bytes')
-        self.U, self.S, self.V = np.linalg.svd(X_,full_matrices=False)# full_matrices False for memory
+        self.U, self.S, self.V = np.linalg.svd(X_,full_matrices=False)# full_matrices False because of memory
         self.Psi = self.U[:,:self.r]
         
     def reconstruction_error(self,r,norm,snapshots_matrix_test):

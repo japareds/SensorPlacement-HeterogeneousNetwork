@@ -169,7 +169,7 @@ class DataSet():
         Project dataset onto lowrank-basis subspace defined by the columns of Psi
         The snapshots matrix (ds.T) is the one projected onto the subspace.
         To express it as dataset:
-            ds_proj = (Psi.T@ds.T).T = ds@Psi = snapshots.T@Psi
+            ds_proj = (Psi@Psi.T@snapshots).T = (Psi@Psi.T@ds.T).T = ds@Psi@Psi.T
 
         Parameters
         ----------
@@ -185,17 +185,17 @@ class DataSet():
         snapshots_matrix = self.ds_train.T.values
         
         avg = np.mean(snapshots_matrix,axis=1)
-        std = np.std(snapshots_matrix,axis=1)
         snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
-        self.ds_train_scaled = pd.DataFrame(snapshots_matrix_centered.T@Psi)
+        self.ds_train_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_train.index)
         
         snapshots_matrix = self.ds_val.T.values
         snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
-        self.ds_val_scaled = pd.DataFrame(snapshots_matrix_centered.T@Psi)
+        self.ds_val_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_val.index)
         
         snapshots_matrix = self.ds_test.T.values
         snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
-        self.ds_test_scaled = pd.DataFrame(snapshots_matrix_centered.T@Psi)
+        self.ds_test_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_test.index)
+        
         
         
         
