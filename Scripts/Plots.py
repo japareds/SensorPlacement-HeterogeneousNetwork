@@ -1068,14 +1068,49 @@ class Plots():
             fname = f'{self.save_path}logdet_vs_variances_r{r}_pZero{p_zero}_pEmpty{p_empty}.png'
             fig.savefig(fname,dpi=300,format='png')
   
-    
-       
-        
-        
-        
     # =============================================================================
     # PLOTS RMSE
     # =============================================================================
+    
+    def plot_rmse_validation(self,val_path,p_zero_plot,save_fig=False):
+        
+        # load results
+        rmse_train = {el:[] for el in np.arange(10,60,10)}
+        rmse_val = {el:[] for el in np.arange(10,60,10)}
+        for p_zero in np.arange(10,60,10):
+            fname = val_path+f'RMSE_All_train_{p_zero}RefSt.pkl'
+            with open(fname,'rb') as f:
+                rmse_alphas = pickle.load(f)
+            rmse_train[p_zero] = rmse_alphas
+            
+            fname = val_path+f'RMSE_All_validation_{p_zero}RefSt.pkl'
+            with open(fname,'rb') as f:
+                rmse_alphas = pickle.load(f)
+            rmse_val[p_zero] = rmse_alphas
+        
+        alphas = np.logspace(-2,2,5)
+      
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(alphas,[i for i in rmse_train[p_zero_plot].values()],color='#1a5276',label='Training set')
+        ax.plot(alphas,[i for i in rmse_val[p_zero_plot].values()],color='orange',label='Validation set')
+        ax.set_xscale('log')
+        ax.set_xlabel(r'$\alpha$')
+        ax.set_xticks(alphas)
+        ax.set_xticklabels(ax.get_xticks())
+        ax.set_ylabel('RMSE')
+        
+        ax.set_title(f'{p_zero_plot} reference stations')
+        #ax.set_yscale('log')
+        ax.legend(loc='best',ncol=1)
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        if save_fig:
+            fname = f'{self.save_path}_ValidationPlot_RMSE_alphas_{p_zero_plot}RefSt.png'
+            fig.savefig(fname,dpi=300,format='png')
+            
+            
        
     def plot_other_performance_metrics(self,Dop_path,rank_path,r,var_zero,p_empty,alpha_reg,metric='RMSE',save_fig=False):
         # load results
@@ -1127,41 +1162,45 @@ class Plots():
             fname = self.save_path+'RMSE_' if metric=='RMSE' else self.save_path+'MAE_'
             fig.savefig(fname+f'vs_num_stations_r{r}_sigmaZero{var_zero}_pEmpty{p_empty}.png',dpi=300,format='png')
 
-    def plot_rmse_vs_variances(self,dict_rmse_var,p_zero,p_empty,n,r,metric='RMSE',locations_estimated='All',save_fig=False):
+    def plot_rmse_vs_variances(self,rmse_path,p_zero,alpha_reg,locations_estimated='All',save_fig=False):
         # load results
-        variances = [i for i in dict_rmse_var.keys()]
-        rmse = np.array([i for i in dict_rmse_var.values()])
+        fname = rmse_path+f'RMSE_vs_variances_{locations_estimated}_RandomDoptRankMax_{p_zero}RefSt.pkl'
+        with open(fname,'rb') as f:
+            rmse_var = pickle.load(f)
+        print('Loaded file\n')
+        for k in rmse_var.keys():
+            print(f'{k}: {rmse_var[k]}')
         
-       
+        xrange = np.arange(1,len(rmse_var)+1,1) 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(variances,rmse[:,0],color='#a93226',label='Best random placement',linestyle='-')
-        ax.plot(variances,rmse[:,1],color='#1a5276',label='D-optimal',linestyle='-')
-        ax.plot(variances,rmse[:,2],color='#ca6f1e',label='Rank-max',linestyle='-')
+        ax.plot(xrange,
+                [i[0] for i in rmse_var.values()],color='#b03a2e',label='Best random')
+        ax.plot(xrange,
+                [i[1] for i in rmse_var.values()],color='#1a5276',label='D-optimal')
+        ax.plot(xrange,
+                [i[2] for i in rmse_var.values()],color='orange',label=rf'rankMax $\alpha=$' r'${0:s}$'.format(scientific_notation(alpha_reg, 1)))
         
-        ax.set_xticks(variances)
-        ax.set_xticklabels([f'{i:.1e}' for i in ax.get_xticks()])
-        ax.set_xscale('log')
         
         ax.set_xlabel(r'$\epsilon^2/\sigma^2_m$')
-        
-        #ax.set_yticks(np.arange(-300,100,100))
-        #ax.set_yticklabels(ax.get_yticks())
-        if metric =='RMSE':
-            ax.set_ylabel(r'RMSE')
-        else:
-            ax.set_ylabel(r'MAE')
+        ax.set_xticks(xrange)
+        ax.set_xticklabels(np.concatenate(([0],[r'${0:s}$'.format(scientific_notation(i, 1)) for i in rmse_var.keys()][1:])))
             
-        ax.set_title(f'{p_zero} reference stations and {n-p_empty-p_zero} LCSs')
-        #ax.set_yscale('log')
-        ax.legend(loc='best',ncol=1)
+        ax.set_yticks(np.arange(0,120,20))
+        ax.set_ylim(0,100)
+        ax.set_yticklabels(ax.get_yticks())
+        ax.set_ylabel(r'RMSE ($\mu$g$/m^3$)')
+       # ax.set_title(f'{p_zero} reference stations')
+        ax.legend(loc='upper right',ncol=3)
         ax.tick_params(axis='both', which='major')
         fig.tight_layout()
         
         if save_fig:
-            fname = self.save_path+'RMSE_' if metric=='RMSE' else self.save_path+'MAE_'
-            fig.savefig(fname+f'{locations_estimated}_vs_variances_r{r}_pZero{p_zero}_pEmpty{p_empty}.png',dpi=300,format='png')
-  
+            fname = f'{self.save_path}Testing_RMSE_variances_{p_zero}RefSt.png'
+            fig.savefig(fname,dpi=300,format='png')
+            
+            
+        
     
         
     # =============================================================================

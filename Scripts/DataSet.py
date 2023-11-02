@@ -164,39 +164,7 @@ class DataSet():
         self.ds_val = self.ds.loc[val_set_begin:val_set_end].copy()
         self.ds_test = self.ds.loc[test_set_begin:].copy()
         
-    def project_basis(self,Psi):
-        """
-        Project dataset onto lowrank-basis subspace defined by the columns of Psi
-        The snapshots matrix (ds.T) is the one projected onto the subspace.
-        To express it as dataset:
-            ds_proj = (Psi@Psi.T@snapshots).T = (Psi@Psi.T@ds.T).T = ds@Psi@Psi.T
-
-        Parameters
-        ----------
-        Psi : numpy array
-            low-rank basis
-
-        Returns
-        -------
-        self.ds_proj : pandas dataFrame
-            projected dataset
-
-        """
-        snapshots_matrix = self.ds_train.T.values
-        
-        avg = np.mean(snapshots_matrix,axis=1)
-        snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
-        self.ds_train_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_train.index)
-        
-        snapshots_matrix = self.ds_val.T.values
-        snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
-        self.ds_val_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_val.index)
-        
-        snapshots_matrix = self.ds_test.T.values
-        snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
-        self.ds_test_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_test.index)
-        
-        
+  
         
         
     def cleanMissingvalues(self,strategy='remove',tol=0.1):
@@ -237,6 +205,44 @@ class DataSet():
             print('Interpolating missing data')
             self.ds = self.ds.interpolate(method='linear')
             print(f'Entries with missing values remiaining:\n{self.ds.isna().sum()}')
+            
+    def project_basis(self,Psi):
+        """
+        Project dataset onto lowrank-basis subspace defined by the columns of Psi
+        The snapshots matrix (ds.T) is the one projected onto the subspace.
+        To express it as dataset:
+            ds_proj = (Psi@Psi.T@snapshots).T = (Psi@Psi.T@ds.T).T = ds@Psi@Psi.T
+  
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+  
+        Returns
+        -------
+        self.ds_proj : pandas dataFrame
+            projected dataset
+  
+        """
+        snapshots_matrix = self.ds_train.T.values
+        
+        avg = np.mean(snapshots_matrix,axis=1)
+        snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
+        self.ds_train_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_train.index)
+        
+        snapshots_matrix = self.ds_val.T.values
+        snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
+        self.ds_val_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_val.index)
+        
+        snapshots_matrix = self.ds_test.T.values
+        snapshots_matrix_centered = (snapshots_matrix - avg[:,None])
+        self.ds_test_projected = pd.DataFrame((Psi@Psi.T@snapshots_matrix_centered).T,index = self.ds_test.index)
+        
+      
+    def perturbate_signal(self,ds_signal,variance,seed):
+        rng = np.random.default_rng(seed)
+        noise = rng.normal(loc=0.0,scale=variance,size=ds_signal.shape)
+        return  ds_signal + noise
             
 if __name__ == '__main__':
     print('Testing')

@@ -32,7 +32,7 @@ class PlacementSolutions():
     def compare_similarities_locations(self,Dopt_path,ds,r,n,p_empty,p_zero,var_eps,alpha_reg,locations_to_compare='empty'):
         """
         Load locations obtained with Doptimal for different variances and compare the percentage of similarity
-        with results with Doptimal other variances.
+        with results with Doptimal for other variances.
 
         Parameters
         ----------
@@ -104,6 +104,50 @@ class PlacementSolutions():
         
         print(f'Percentage of shared locations for {num_locations} {locations_to_compare}\n{df_comparison}')
         return df_comparison
+    
+    def compare_similarities_rankMax_Dopt(self,Dopt_path,rank_path,alpha_reg,r,p_zero,p_empty,locations_to_compare):
+        # load files
+        fname = rank_path+f'DiscreteLocations_rankMax_vs_p0_r{r}_pEmpty{p_empty}_alpha{alpha_reg:.1e}.pkl'
+        with open(fname,'rb') as f:
+            dict_rank_locs = pickle.load(f)
+        
+        locations_rankMax = dict_rank_locs[p_zero]
+        
+        variances = np.array([1e-6,1e-5,1e-4,1e-3,1e-2,1e-1,1e0])
+        locations_Dopt = {el:[] for el in variances}
+        
+        for var in variances:
+            fname = Dopt_path+f'DiscreteLocations_D_optimal_vs_p0_r{r}_pEmpty{p_empty}_varZero{var:.1e}.pkl'
+            with open(fname,'rb') as f:
+                dict_Dopt_locs = pickle.load(f)
+            if dict_Dopt_locs[p_zero][2].shape[0] == p_empty:
+                locations_Dopt[var] = dict_Dopt_locs[p_zero]
+            else:
+                locations_Dopt[var] = [[],[],[]]
+        
+        # compute similarities/shared locations assigned to RefSt,LCSs,empty in both cases
+        df_comparison = pd.DataFrame(index=[f'{alpha_reg:.1e}'],columns=[f'{i:.1e}' for i in variances])
+        if locations_to_compare == 'empty':
+            idx=2
+            num_locations = p_empty
+        elif locations_to_compare == 'RefSt':
+            idx=1
+            num_locations = p_zero
+        elif locations_to_compare == 'LCSs':
+            idx=0
+            num_locations = n-(p_zero+p_empty)
+            
+        for var in variances:
+            loc_var = locations_Dopt[var][idx]
+            loc_rank = locations_rankMax[idx]
+            df_comparison.loc[f'{alpha_reg:.1e}'][f'{var:.1e}'] = 100*np.intersect1d(loc_rank, loc_var).shape[0]/num_locations if (len(locations_rankMax) != 0 and len(loc_var)!=0) else np.nan
+        
+        print(f'Percentage of shared locations for {num_locations} {locations_to_compare}\n{df_comparison}')
+        return df_comparison
+   
+        
+        
+        
     
     def compare_logdet_convergence(self,Dopt_path,ds,r,n,p_empty,p_zero,var_eps,alpha_reg):
         """
@@ -304,14 +348,14 @@ if __name__ == '__main__':
         plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=7,fs_legend=3,fs_title=10,show_plots=True)
         
         plt.close('all')
-        p_zero_plot = 30
+        p_zero_plot = 50
         
         placement_solutions = PlacementSolutions(Dopt_path, rank_path)
         variances = np.logspace(-6,0,7)
         for var in variances:
             placement_solutions.compute_solver_failures(r,p_empty,n,var)
       
-        placement_solutions.show_histograms(r, n, p_empty, p_zero_plot, 1e-1, solving_algorithm,save_fig=False)
+        placement_solutions.show_histograms(r, n, p_empty, p_zero_plot, 1e-1, solving_algorithm,save_fig=True)
         
         # compare different solutions
         df_logdet_convergence,df_logdet_convergence_convex = placement_solutions.compare_logdet_convergence(Dopt_path,dataset.ds_train,
@@ -342,9 +386,16 @@ if __name__ == '__main__':
         lowrank_basis.snapshots_matrix()
         lowrank_basis.low_rank_decomposition(normalize=True)    
         dataset.project_basis(lowrank_basis.Psi)
+      
+        ds_lcs_train = dataset.perturbate_signal(dataset.ds_train_projected, 10*var_eps, seed=92)
+        ds_refst_train = dataset.perturbate_signal(dataset.ds_train_projected, 10*var_zero, seed=92)
+        ds_real_train = dataset.ds_train_projected
+        
+        ds_lcs_val = dataset.perturbate_signal(dataset.ds_val_projected, 10*var_eps, seed=92)
+        ds_refst_val = dataset.perturbate_signal(dataset.ds_val_projected, 10*var_zero, seed=92)
+        ds_real_val = dataset.ds_val_projected
         
         p_zero_estimate = 50
-        ds_estimation = dataset.ds_val_projected
         locations_to_estimate='All'
         
         alphas = np.logspace(-2,2,5)
@@ -354,20 +405,26 @@ if __name__ == '__main__':
         
         for alpha_reg in alphas:
             print(f'Regularization for alpha: {alpha_reg}')
-            estimation_train = Estimation.Estimation(n, r, p_empty,p_zero_estimate, var_eps, var_zero, 
-                                               num_random_placements, alpha_reg, 
-                                               solving_algorithm, placement_metric, dataset.ds_train_projected, lowrank_basis.Psi,
-                                               Dopt_path, rank_path, locations_to_estimate)
+            estimation_train = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var_zero, 
+                                                     num_random_placements, alpha_reg,
+                                                     solving_algorithm, placement_metric, 
+                                                     ds_lcs_train, ds_refst_train, ds_real_train, 
+                                                     lowrank_basis.Psi, Dopt_path, rank_path, locations_to_estimate)
+            
             estimation_train.rankMax_placement_estimation_limit()
+            
             rmse_alpha_train[alpha_reg] = estimation_train.rmse_rankMax
             
             
-            estimation_val = Estimation.Estimation(n, r, p_empty,p_zero_estimate, var_eps, var_zero, 
-                                               num_random_placements, alpha_reg, 
-                                               solving_algorithm, placement_metric, ds_estimation, lowrank_basis.Psi,
-                                               Dopt_path, rank_path, locations_to_estimate)
+            estimation_val = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var_zero, 
+                                                     num_random_placements, alpha_reg,
+                                                     solving_algorithm, placement_metric, 
+                                                     ds_lcs_val, ds_refst_val, ds_real_val, 
+                                                     lowrank_basis.Psi, Dopt_path, rank_path, locations_to_estimate)
             
             estimation_val.rankMax_placement_estimation_limit()
+            
+            
             rmse_alpha_val[alpha_reg] = estimation_val.rmse_rankMax
             
         print(f'Training set results for epsilon = 0\n{rmse_alpha_train}\nValidation results\n{rmse_alpha_val}')
@@ -384,68 +441,114 @@ if __name__ == '__main__':
         if dataset_source == 'real':
             val_path = results_path+f'Unmonitored_locations/Training_Testing_split/TrainingSet_results/{solving_algorithm}/'
         else:
-            val_path = results_path+f'Synthetic_Data/ValidationSet_results/'
-         
-        locations_to_estimate='All'
-        p_zero_estimate = np.linspace(10,50,5)
+            val_path = results_path+'Synthetic_Data/ValidationSet_results/'
         
-        rmse_refst_train = {el:[] for el in p_zero_estimate}
-        rmse_refst_val = {el:[] for el in p_zero_estimate}
+        plt.close('all')
+        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=10,fs_ticks=7,fs_legend=7,fs_title=10,show_plots=True)
+        plots.plot_rmse_validation(val_path,p_zero_plot=10,save_fig=True)
         
-        for p_zero in p_zero_estimate:
-            fname = val_path+f'RMSE_{locations_to_estimate}_train_{int(p_zero)}RefSt.pkl'
-            with open(fname,'rb') as f:
-                rmse_alpha_train = pickle.load(f)
-            
-            fname = val_path+f'RMSE_{locations_to_estimate}_validation_{int(p_zero)}RefSt.pkl'
-            with open(fname,'rb') as f:
-                rmse_alpha_val = pickle.load(f)
-        
-            rmse_refst_train[p_zero] = rmse_alpha_train
-            rmse_refst_val[p_zero] = rmse_alpha_val
         
     estimate = False
     if estimate:
+        print('Estimation on testing set.\nComparing Doptimal solutions with rankMax solutions using GLS estimations.')
         Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
         rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
-       
+        
+        # set of validated number of reference stations and respective alphas for rankMax criterion (on whole network)
+        p_zero_range_validated = [10,20,30,40,50]
+        if dataset_source == 'synthetic':
+            alphas_range = [1e2,1e-2,1e1,1e0,1e-2]
+            alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
+        else:
+            print('regularization parameter alpha not validated in the limit')
+            alphas_range = [1e2,1e-2,1e1,1e0,1e-2]
+        
+        # estimate RMSE in the whole network using Dopt(variance dependant) and rankMax(alpha dependant) configurations.
+        # For a given variance the estimations are computed using GLS for both criteria
+        # rankMax gives an extra estimation for variance == 0.
+        
+        lowrank_basis = LRB.LowRankBasis(dataset.ds_train, r)
+        lowrank_basis.snapshots_matrix()
+        lowrank_basis.low_rank_decomposition(normalize=True)    
+        dataset.project_basis(lowrank_basis.Psi)
+        
         p_zero_estimate = 30
-        ds_estimation = dataset.ds_train
+        alpha_reg = alphas[p_zero_estimate]
         locations_to_estimate='All'
-        variances = [1e-6,1e-4,1e-2,1e-1,1e0]
+        
+        variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
         dict_rmse_var = {el:np.inf for el in variances}
         
         for var in variances:
-            estimation = Estimation.Estimation(n, r, p_empty,p_zero_estimate, var_eps, var, num_random_placements, alpha_reg, 
-                                               solving_algorithm, placement_metric, ds_estimation, 
-                                               Dopt_path, rank_path, locations_to_estimate)
+            ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, 10*var_eps, seed=92)
+            ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected, 10*var, seed=92)
+            ds_real_test = dataset.ds_test_projected
+            
+            estimation_test = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var, 
+                                                     num_random_placements, alpha_reg,
+                                                     solving_algorithm, placement_metric, 
+                                                     ds_lcs_test, ds_refst_test, ds_real_test, 
+                                                     lowrank_basis.Psi, Dopt_path, rank_path, locations_to_estimate)
+        
+        
+            if var!=0:
+                estimation_test.random_placement_estimation(rank_path)
+                estimation_test.Dopt_placement_estimation()
+                estimation_test.rankMax_placement_estimation()
+                dict_rmse_var[var] = [estimation_test.rmse_best_random,estimation_test.rmse_Dopt,estimation_test.rmse_rankMax]
+                
+            else:
+                estimation_test.random_placement_estimation_limit(rank_path)
+                estimation_test.rankMax_placement_estimation_limit()
+                dict_rmse_var[var] = [estimation_test.rmse_best_random,np.inf,estimation_test.rmse_rankMax]
+            
             
         
         
+        fname = f'{results_path}RMSE_vs_variances_{locations_to_estimate}_RandomDoptRankMax_{p_zero_estimate}RefSt.pkl'
+        with open(fname,'wb') as f:
+           pickle.dump(dict_rmse_var,f)
         
-            estimation.random_placement_estimation(rank_path)
-            estimation.Dopt_placement_estimation()
-            estimation.rankMax_placement_estimation()
-            dict_rmse_var[var] = [estimation.rmse_best_random,estimation.rmse_Dopt,estimation.rmse_rankMax]
-        
-        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=8,fs_legend=6,fs_title=10,show_plots=True)
-        plots.plot_rmse_vs_variances(dict_rmse_var,p_zero_estimate,p_empty,n,r,
-                                     metric='RMSE',locations_estimated=locations_to_estimate,save_fig=True)
-        #estimation.compute_estimations()
-        #estimation.save_results(results_path)
-    
+      
     else:
-        # Dopt_path = results_path+'Synthetic_Data/TestingSet_results/Doptimal/'
-        # rank_path = results_path+'Synthetic_Data/TestingSet_results/rankMax/'
-        
-        # Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
-        # rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
-        
-        
-        # plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=8,fs_legend=6,fs_title=10,show_plots=True)
-        # plots.plot_rmse_vs_variances(Dopt_path,rank_path,r,p_empty,p_zero_plot,n,alpha_reg,metric='RMSE',
-        #                              locations_to_estimate='empty',save_fig=False)
+        if dataset_source == 'real':
+            test_path = results_path+f'Unmonitored_locations/TestingSet_results/'
+        else:
+            test_path = results_path+f'Synthetic_Data/TestingSet_results/'
+         
+        plt.close('all')
+      
+        p_zero_range_validated = [10,20,30,40,50]
+        if dataset_source == 'synthetic':
+            alphas_range = [1e2,1e-2,1e1,1e0,1e-2]
+            alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
+        else:
+            print('regularization parameter alpha not validated in the limit')
+            alphas_range = [1e2,1e-2,1e1,1e0,1e-2]
        
-        print('---')
+        
+        p_zero_plot = 50
+        alpha_reg = alphas[p_zero_plot]
+        placement_solutions = PlacementSolutions(Dopt_path, rank_path)
+        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+                                                              alpha_reg, r, p_zero_plot, p_empty, 
+                                                              locations_to_compare='empty')
+        
+        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+                                                              alpha_reg, r, p_zero_plot, p_empty, 
+                                                              locations_to_compare='LCSs')
+        
+        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+                                                             alpha_reg, r, p_zero_plot, p_empty, 
+                                                             locations_to_compare='RefSt')
+      
+     
+        
+        
+        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,show_plots=True)
+        plots.plot_rmse_vs_variances(test_path,p_zero_plot,alpha_reg,locations_estimated='All',save_fig=True)
+       
+     
+        
     
   

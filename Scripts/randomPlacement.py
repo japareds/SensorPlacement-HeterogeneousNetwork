@@ -189,13 +189,49 @@ class randomPlacement():
         self.metric = metric
         self.metric_precisionMat = metric_precisionMat
         self.Covariances = Covariances
+        
+    def Cov_matrix_limit(self,Psi):
+        """
+        Compute covariance matrix in the limit var_zero = 0
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+
+        Returns
+        -------
+        None.
+
+        """
+        self.Covariances = {el:0 for el in np.arange(len(self.locations))}
+        for idx in self.locations.keys():
+            C_eps = self.C[idx][0]
+            C_zero = self.C[idx][1]
+            
+            
+            Theta_eps = C_eps@Psi
+            Theta_zero = C_zero@Psi
+            
+            refst_matrix = Theta_zero.T@Theta_zero
+            refst_pinv = np.linalg.pinv(refst_matrix)
+            
+            lcs_matrix = Theta_eps.T@Theta_eps
+            lcs_pinv = np.linalg.pinv(lcs_matrix)
+            
+            
+            Is = np.identity(self.r)
+            term = Is - refst_matrix@refst_pinv
+            self.Covariances[idx] = term@lcs_pinv@term
+        
+    
     
     def perturbate_signal(self,ds_signal,variance,seed):
         rng = np.random.default_rng(seed)
         noise = rng.normal(loc=0.0,scale=variance,size=ds_signal.shape)
         return ds_signal+noise
     
-    def beta_estimated(self,Psi,ds_estimation,var_eps,var_zero):
+    def beta_estimated(self,Psi,ds_lcs,ds_refst,var_eps,var_zero):
         """
         Compute GLS estimated regressor
 
@@ -203,8 +239,10 @@ class randomPlacement():
         ----------
         Psi : np array
             low-rank basis
-        ds_estimation : pandas dataframe
-            dataset for estimation
+        ds_lcs : pandas dataframe
+            LCSs dataset
+        ds_refst : pandas dataframe
+            reference stations dataset
         var_eps : float
             LCSs variance
         var_zero : float
@@ -227,15 +265,59 @@ class randomPlacement():
             
             locations = self.locations[idx]
             
-            y_refst = self.perturbate_signal(ds_estimation.loc[:,locations[1]], var_zero*15, seed=idx)
-            y_lcs = self.perturbate_signal(ds_estimation.loc[:,locations[0]], var_eps*15, seed=idx)
-            #y_refst = ds_estimation.loc[:,locations[1]]
-            #y_lcs = ds_estimation.loc[:,locations[0]]
+            y_refst = ds_lcs.loc[:,locations[1]]
+            y_lcs = ds_refst.loc[:,locations[0]]
             
             second_term = (var_zero**-1)*Theta_zero.T@y_refst.T + (var_eps**-1)*Theta_eps.T@y_lcs.T
             self.beta_hat[idx] = Cov@second_term
             
-    def estimation(self,Psi,ds_estimation,var_eps,var_zero,locations_to_estimate='empty'):
+    def beta_estimated_limit(self,Psi,ds_lcs,ds_refst,r):
+        """
+        Compute estimated regressor (beta) from sensor measurements
+        in the limit variances refst goes to zero (limit of GLS)
+
+        Parameters
+        ----------
+        Psi : numpy array
+            sparse basis
+        ds_lcs : pandas dataframe
+           LCSs dataset
+        ds_refst : pandas dataframe
+           reference stations dataset
+
+        Returns
+        -------
+        self.beta_hat : numpy array
+                estimated regressor over time (r,num_samples)
+
+        """
+        
+        
+        self.beta_hat = {el:0 for el in np.arange(len(self.locations))}
+        
+        for idx in self.locations.keys():
+            C_eps = self.C[idx][0]
+            C_zero = self.C[idx][1]
+            
+            Theta_eps = C_eps@Psi
+            Theta_zero = C_zero@Psi
+            
+            refst_pinv = np.linalg.pinv(Theta_zero.T@Theta_zero)
+            lcs_pinv = np.linalg.pinv(Theta_eps.T@Theta_eps)
+            Is = np.identity(r)
+            P = Is - Theta_zero.T@Theta_zero@refst_pinv
+            
+            locations = self.locations[idx]
+            
+            y_refst = ds_lcs.loc[:,locations[1]].T
+            y_lcs = ds_refst.loc[:,locations[0]].T
+            
+            
+            self.beta_hat[idx] = P@lcs_pinv@P@Theta_eps.T@y_lcs + np.linalg.pinv(Theta_zero)@y_refst
+            
+        
+            
+    def estimation(self,Psi,ds_real,var_eps,var_zero,locations_to_estimate='All'):
         self.rmse = {el:0 for el in np.arange(len(self.locations))}
         self.mae = {el:0 for el in np.arange(len(self.locations))}
        
@@ -243,30 +325,28 @@ class randomPlacement():
             locations = self.locations[idx]
             if locations_to_estimate == 'empty':
                 l = 2
-                y_estimation = ds_estimation.loc[:,locations[l]]
+                y_real = ds_real.loc[:,locations[2]]
                 C_estimation = self.C[idx][l]
             elif locations_to_estimate == 'LCSs':
                 l = 0
-                var_noise = var_eps
-                y_estimation = self.perturbate_signal(ds_estimation.loc[:,locations[l]], var_noise*15, seed=idx)
+                y_real = ds_real.loc[:,locations[0]]
                 C_estimation = self.C[idx][l]
             elif locations_to_estimate == 'RefSt':
                 l = 1
-                var_noise = var_zero
-                y_estimation = self.perturbate_signal(ds_estimation.loc[:,locations[l]], var_noise*15, seed=idx)
+                y_real = ds_real.loc[:,locations[1]]
                 C_estimation = self.C[idx][l]
             else:
-                y_estimation = ds_estimation
-                C_estimation = np.identity(ds_estimation.shape[1])
+                y_real = ds_real
+                C_estimation = np.identity(ds_real.shape[1])
                 
             
             # format tabular dataset
             y_hat = C_estimation@Psi@self.beta_hat[idx]
             y_pred = y_hat.T
-            y_pred.columns = y_estimation.columns
+            y_pred.columns = y_real.columns
                         
-            self.rmse[idx] = np.sqrt(mean_squared_error(y_estimation, y_pred))
-            self.mae[idx] = mean_absolute_error(y_estimation, y_pred)
+            self.rmse[idx] = np.sqrt(mean_squared_error(y_real, y_pred))
+            self.mae[idx] = mean_absolute_error(y_real, y_pred)
             
             
             
