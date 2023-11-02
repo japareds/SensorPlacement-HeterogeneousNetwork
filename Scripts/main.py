@@ -322,10 +322,10 @@ if __name__ == '__main__':
     n = dataset.ds.shape[1]
     r = 54 if dataset_source == 'synthetic' else 34
     p_empty = int(n*0.4)
-    var_eps,var_zero = 1,1e-6
+    var_eps,var_zero = 1,1e0
     alpha_reg = 1e2
     num_random_placements = 100
-    solving_algorithm = 'rankMax' #['D_optimal','rankMax']
+    solving_algorithm = 'D_optimal' #['D_optimal','rankMax']
     placement_metric = 'logdet'
 
     # lowrank_basis = LRB.LowRankBasis(dataset.ds_train, r)
@@ -335,13 +335,14 @@ if __name__ == '__main__':
     
     
     plt.close('all')
-    place_sensors = False
+    place_sensors = True
     if place_sensors:
         print('Sensor placement\nCompute weights and locations')
         placement = CW.Placement(n, p_empty, r, dataset.ds_train, solving_algorithm, 
                                  var_eps, var_zero, num_random_placements, alpha_reg)
         placement.placement_allStations()
         placement.save_results(results_path)
+        
     else:
         Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
         rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
@@ -369,7 +370,10 @@ if __name__ == '__main__':
                                                                                  locations_to_compare='RefSt')
         df_comparison_lcs= placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,
                                                                               r,n,p_empty,p_zero_plot,var_eps,alpha_reg,
-                                                                              locations_to_compare='LCSs')        
+                                                                              locations_to_compare='LCSs')    
+        
+       
+        
         
         
   
@@ -451,6 +455,7 @@ if __name__ == '__main__':
     estimate = False
     if estimate:
         print('Estimation on testing set.\nComparing Doptimal solutions with rankMax solutions using GLS estimations.')
+        input('Press Enter to continue ...')
         Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
         rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
         
@@ -480,9 +485,15 @@ if __name__ == '__main__':
         dict_rmse_var = {el:np.inf for el in variances}
         
         for var in variances:
-            ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, 10*var_eps, seed=92)
-            ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected, 10*var, seed=92)
-            ds_real_test = dataset.ds_test_projected
+            if var in np.logspace(-2,0,3):
+                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, 30*var_eps, seed=92)
+                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected, 30*var, seed=92)
+                ds_real_test = dataset.ds_test_projected
+            
+            else:
+                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, 10*var_eps, seed=92)
+                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected, 10*var, seed=92)
+                ds_real_test = dataset.ds_test_projected
             
             estimation_test = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var, 
                                                      num_random_placements, alpha_reg,
@@ -527,7 +538,7 @@ if __name__ == '__main__':
             alphas_range = [1e2,1e-2,1e1,1e0,1e-2]
        
         
-        p_zero_plot = 50
+        p_zero_plot = 10
         alpha_reg = alphas[p_zero_plot]
         placement_solutions = PlacementSolutions(Dopt_path, rank_path)
         placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
@@ -544,10 +555,10 @@ if __name__ == '__main__':
       
      
         
-        
         plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,show_plots=True)
         plots.plot_rmse_vs_variances(test_path,p_zero_plot,alpha_reg,locations_estimated='All',save_fig=True)
        
+        plots.plot_execution_time_variance(Dopt_path,rank_path,r,p_empty,p_zero_plot,alpha_reg,save_fig=True)
      
         
     

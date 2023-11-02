@@ -1766,8 +1766,47 @@ class Plots():
         fig.tight_layout()
         
         
+    # =============================================================================
+    #         Execution time
+    # =============================================================================
+    def plot_execution_time_variance(self,Dopt_path,rank_path,r,p_empty,p_zero,alpha_reg,save_fig=False):
+        # execution time
+        variances = np.logspace(-6,0,7)
+        exec_time_Dopt = {el:0 for el in variances}
+        for var in variances:
+            fname = Dopt_path+f'ExecutionTime_D_optimal_vs_p0_r{r}_pEmpty{p_empty}_varZero{var:.1e}.pkl'
+            with open(fname,'rb') as f:
+                exec_time = pickle.load(f)
+            exec_time_Dopt[var] = exec_time[p_zero]
         
-
+        
+        alphas = np.logspace(-2,2,5)    
+        exec_time_rank = {el:0 for el in alphas}
+        for alpha_reg in alphas:
+            fname = rank_path+f'ExecutionTime_rankMax_vs_p0_r{r}_pEmpty{p_empty}_alpha{alpha_reg:.1e}.pkl'
+            with open(fname,'rb') as f:
+                exec_time = pickle.load(f)
+            exec_time_rank[alpha_reg] = exec_time[p_zero]
+            
+        
+        # plot
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(variances,[i for i in exec_time_Dopt.values()],color='#1a5276',label='D-optimal')
+        ax.hlines(y=exec_time_rank[alpha_reg],xmin=variances[0],xmax=variances[-1],color='orange',label=r'rankMax $\alpha$='r'${0:s}$'.format(scientific_notation(alpha_reg, 1)))
+        ax.set_xscale('log')
+        ax.set_xticks(variances)
+        ax.set_xticklabels(ax.get_xticks())
+        ax.set_xlabel(r'$\epsilon^2/\sigma^2_m$')
+        ax.set_ylabel('Execution time (s)')
+        
+        ax.legend(loc='upper right',ncol=1)
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        if save_fig:
+            fname = self.save_path+f'ExecutionTime_Dopt_rankMax_{r}_pEmpty{p_empty}_{p_zero}RefSt.png'
+            fig.savefig(fname,dpi=300,format='png')
 
         
 if __name__ == '__main__':
