@@ -378,8 +378,8 @@ if __name__ == '__main__':
         plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=7,fs_legend=3,fs_title=10,show_plots=False)
         
         plt.close('all')
-        p_zero_plot = 30
-        alpha_plot = 1e-2
+        p_zero_plot = 10
+        alpha_plot = 1e-2 # from validation results for that number of ref.st.
         
         placement_solutions = PlacementSolutions(Dopt_path, rank_path)
         
@@ -410,6 +410,22 @@ if __name__ == '__main__':
         df_comparison_lcs= placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,
                                                                               r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
                                                                               locations_to_compare='LCSs')    
+        
+        # compare similarities between rankMax distribution and different Dopt solutions
+        
+        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+                                                              alpha_plot, r, p_zero_plot, p_empty, 
+                                                              locations_to_compare='empty')
+        
+        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+                                                              alpha_plot, r, p_zero_plot, p_empty, 
+                                                              locations_to_compare='LCSs')
+        
+        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+                                                              alpha_plot, r, p_zero_plot, p_empty, 
+                                                              locations_to_compare='RefSt')
+      
+     
         
        
         
@@ -521,8 +537,8 @@ if __name__ == '__main__':
         else:
             Dopt_path = results_path+'Korea/TrainingSet_results/Doptimal/'
             rank_path = results_path+'Korea/TrainingSet_results/rankMax/'
-            p_zero_range_validated = [10,20,30]
-            alphas_range = [1e-2,1e-2,1e-2]
+            p_zero_range_validated = []
+            alphas_range = []
             alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
         
         # set of validated number of reference stations and respective alphas for rankMax criterion (on whole network)
@@ -534,10 +550,10 @@ if __name__ == '__main__':
         
         lowrank_basis = LRB.LowRankBasis(dataset.ds_train, r)
         lowrank_basis.snapshots_matrix()
-        lowrank_basis.low_rank_decomposition(normalize=True)    
+        lowrank_basis.low_rank_decomposition(normalize=True)
         dataset.project_basis(lowrank_basis.Psi)
         
-        p_zero_estimate = 17
+        p_zero_estimate = 10
         alpha_reg = alphas[p_zero_estimate]
         locations_to_estimate='All'
         
@@ -545,15 +561,11 @@ if __name__ == '__main__':
         dict_rmse_var = {el:np.inf for el in variances}
         
         for var in variances:
-            if var in np.logspace(-2,0,3):
-                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=92)#30 synthetic/20 cat
-                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected,var, seed=92)
-                ds_real_test = dataset.ds_test_projected
             
-            else:
-                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=92)#10 synthetic/20 cat
-                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected, var, seed=92)
-                ds_real_test = dataset.ds_test_projected
+            ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=92)#30/10 synthetic (var -2..0/-3..-6)/20 cat
+            ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected,var, seed=92)
+            ds_real_test = dataset.ds_test_projected
+        
             
             estimation_test = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var, 
                                                      num_random_placements, alpha_reg,
@@ -565,13 +577,15 @@ if __name__ == '__main__':
             if var!=0:
                 estimation_test.random_placement_estimation(rank_path)
                 estimation_test.Dopt_placement_estimation()
+                estimation_test.Dopt_placement_convergene(var_orig=1e0)
                 estimation_test.rankMax_placement_estimation()
-                dict_rmse_var[var] = [estimation_test.rmse_best_random,estimation_test.rmse_Dopt,estimation_test.rmse_rankMax]
+                dict_rmse_var[var] = [estimation_test.rmse_ci_random,estimation_test.rmse_Dopt,estimation_test.rmse_Dopt_convergence,estimation_test.rmse_rankMax]
                 
             else:
                 estimation_test.random_placement_estimation_limit(rank_path)
+                estimation_test.Dopt_placement_convergene(var_orig=1e0)
                 estimation_test.rankMax_placement_estimation_limit()
-                dict_rmse_var[var] = [estimation_test.rmse_best_random,np.inf,estimation_test.rmse_rankMax]
+                dict_rmse_var[var] = [estimation_test.rmse_ci_random,np.inf,estimation_test.rmse_Dopt_convergence,estimation_test.rmse_rankMax]
             
             
         

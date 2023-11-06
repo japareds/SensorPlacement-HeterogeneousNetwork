@@ -9,6 +9,7 @@ Created on Tue Oct 24 10:14:31 2023
 
 import os
 import numpy as np
+import scipy.stats
 import pickle
 from sklearn.metrics import mean_absolute_error,mean_squared_error
 import DataSet as DS
@@ -21,6 +22,14 @@ import Plots
 # =============================================================================
 # Estimate sensor measurements at unmonitored locations
 # =============================================================================
+
+def mean_confidence_interval(data, confidence=0.90):
+    a = 1.0 * np.array(data)
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return np.array([m, m-h, m+h])
+
 
 class Estimation():
     def __init__(self,n,r,p_empty,p_zero_estimate,var_eps,var_zero,num_random_placements,alpha_reg,solving_algorithm,placement_metric,ds_lcs,ds_refst,ds_real,Psi,Dopt_path,rank_path,locations_to_estimate):
@@ -68,6 +77,7 @@ class Estimation():
         rmse_random_placement = np.array([i for i in random_placement.rmse.values()])
         mae_random_placement = np.array([i for i in random_placement.mae.values()])
         self.rmse_best_random = rmse_random_placement.min()
+        self.rmse_ci_random = mean_confidence_interval(rmse_random_placement, confidence=0.90)
         self.mae_best_random = mae_random_placement.min()
         
     def Dopt_placement_estimation(self):
@@ -131,6 +141,78 @@ class Estimation():
         
         self.rmse_stations_Dopt = [np.sqrt(mean_squared_error(y_real.iloc[:,i],y_pred.iloc[:,i])) for i in range(y_real.shape[1])]
         self.mae_stations_Dopt = [mean_absolute_error(y_real.iloc[:,i],y_pred.iloc[:,i]) for i in range(y_real.shape[1])]
+        
+    def Dopt_placement_convergene(self,var_orig=1e0):
+        p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
+        sensor_placement = SP.SensorPlacement('D_optimal', self.n, self.r, self.p_zero_estimate, p_eps_estimate,
+                                              self.p_empty, self.var_eps, var_orig)
+        
+        sensor_placement.initialize_problem(self.Psi,self.alpha_reg)
+        sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
+        
+        sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
+        sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
+        print(f'Dopt chosen locations for epsilon {self.var_zero} sigma {self.var_eps}\n{sensor_placement.locations}')
+        
+        if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
+            print(f'No solution found for D-optimal with {self.p_zero_estimate} reference stations\n')
+            self.rmse_Dopt = np.inf
+            self.mae_Dopt =  np.inf
+            
+            self.rmse_stations_Dopt = [np.inf]
+            self.mae_stations_Dopt = [np.inf]
+            
+            return
+        
+        # compute location and covariance matrix
+        sensor_placement.C_matrix()
+        # interrupt! using locations obtained with var_orig change for new var_zero
+        sensor_placement.var_zero = self.var_zero
+        
+        if self.var_zero != 0:
+            sensor_placement.covariance_matrix(self.Psi,metric=self.placement_metric,activate_error_solver=False)
+        else:
+            sensor_placement.covariance_matrix_limit(self.Psi)
+        
+        # sensors measurements (with noise)
+        y_lcs = self.ds_lcs.loc[:,sensor_placement.locations[0]]
+        y_refst = self.ds_refst.loc[:,sensor_placement.locations[1]]
+        y_empty = self.ds_real.loc[:,sensor_placement.locations[2]]
+        
+        # estimated regressor
+        if self.var_zero !=0:
+            sensor_placement.beta_estimated_GLS(self.Psi,y_refst.T,y_lcs.T)
+        else:
+            sensor_placement.beta_estimated_limit(self.Psi,y_refst.T,y_lcs.T)
+            
+        # estimate at certain locations
+        if self.locations_to_estimate == 'empty':
+            l=2
+            y_real = y_empty
+            C = sensor_placement.C[l]
+        elif self.locations_to_estimate == 'RefSt':
+            l=1
+            y_real = y_refst
+            C = sensor_placement.C[l]
+        elif self.locations_to_estimate == 'LCSs':
+            l=0
+            y_real = y_lcs
+            C = sensor_placement.C[l]
+        elif self.locations_to_estimate == 'All':
+            y_real = self.ds_real
+            C = np.identity(self.n)
+            
+        y_hat = C@self.Psi@sensor_placement.beta_hat
+        y_pred = y_hat.T
+        y_pred.columns = y_real.columns
+        
+        # compute metric
+        # metrics
+        self.rmse_Dopt_convergence = np.sqrt(mean_squared_error(y_real, y_pred))
+        self.mae_Dopt_convergence =  mean_absolute_error(y_real, y_pred)
+        
+        self.rmse_stations_Dopt_convergence = [np.sqrt(mean_squared_error(y_real.iloc[:,i],y_pred.iloc[:,i])) for i in range(y_real.shape[1])]
+        self.mae_stations_Dopt_convergence = [mean_absolute_error(y_real.iloc[:,i],y_pred.iloc[:,i]) for i in range(y_real.shape[1])]
         
     def rankMax_placement_estimation(self):
         
@@ -275,6 +357,7 @@ class Estimation():
         rmse_random_placement = np.array([i for i in random_placement.rmse.values()])
         mae_random_placement = np.array([i for i in random_placement.mae.values()])
         self.rmse_best_random = rmse_random_placement.min()
+        self.rmse_ci_random = mean_confidence_interval(rmse_random_placement, confidence=0.90)
         self.mae_best_random = mae_random_placement.min()
     
     
