@@ -39,6 +39,38 @@ class Placement():
         self.num_random_placements = num_random_placements
         self.alpha_reg = alpha_reg
         
+    def placement_random(self):
+        """
+        Random sensor placement.
+        Iterate over different proportions of reference stations and LCSs
+        and obtain different combinations of monitored locations.
+
+        Returns
+        -------
+        None.
+
+        """
+        # obtain data-driven basis
+        lowrank_basis = LRB.LowRankBasis(self.ds_basis, self.r)
+        lowrank_basis.snapshots_matrix()
+        lowrank_basis.low_rank_decomposition(normalize=True)
+        range_sensors = np.arange(0,self.n-self.p_empty+1,1)
+        self.dict_locations_random = {el:0 for el in range_sensors}
+        
+        for p_zero in range_sensors:
+            p_eps = self.n-(p_zero + self.p_empty)
+            print('Random sensor placement')
+            random_placement = RP.randomPlacement(p_eps,p_zero,self.p_empty,self.n)
+            random_placement.place_sensors(self.num_random_placements,random_seed=92)
+            # random_placement.C_matrix()
+            # # random_placement.Cov_metric(lowrank_basis.Psi, var_eps, var_zero,criteria=placement_metric)
+            # # results_random = np.array([i for i in random_placement.metric.values()])
+            self.dict_locations_random[p_zero] = random_placement.locations
+            
+      
+        
+    
+        
     def placement_allStations(self):
         """
         Sensor placement for varying number of reference stations and LCSs
@@ -61,21 +93,14 @@ class Placement():
         
         self.dict_weights = {el:0 for el in range_sensors}
         self.dict_locations = {el:0 for el in range_sensors}
-        self.dict_locations_random = {el:0 for el in range_sensors}
         self.dict_execution_time = {el:0 for el in range_sensors}
         
-        for p_zero in range_sensors:
+        for p_zero in range_sensors: # solve for different number of ref.st. (and LCSs)
             
             p_eps = self.n-(p_zero + self.p_empty)
             print(f'Network description\n{self.n} locations in total\n{p_zero} locations for reference stations\n{p_eps} locations for LCSs\n{self.p_empty} locations unmonitored\n{self.var_zero} variance of reference stations\n{self.var_eps} variance of LCSs')
             print(f'Low rank basis\nr={self.r}')
             
-            print('Random sensor placement')
-            random_placement = RP.randomPlacement(p_eps,p_zero,self.p_empty,self.n)
-            random_placement.place_sensors(self.num_random_placements,random_seed=92)
-            # random_placement.C_matrix()
-            # # random_placement.Cov_metric(lowrank_basis.Psi, var_eps, var_zero,criteria=placement_metric)
-            # # results_random = np.array([i for i in random_placement.metric.values()])
             
             print(f'Sensor placement algorithm {self.solving_algorithm}')
             sensor_placement = SP.SensorPlacement(self.solving_algorithm, 
@@ -106,7 +131,7 @@ class Placement():
             self.dict_weights[p_zero] = [sensor_placement.h_eps.value,sensor_placement.h_zero.value]
             self.dict_locations[p_zero] = sensor_placement.locations
             self.dict_execution_time[p_zero] = sensor_placement.exec_time
-            self.dict_locations_random[p_zero] = random_placement.locations
+         
 
     def save_results(self,results_path):
         

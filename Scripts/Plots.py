@@ -98,16 +98,13 @@ class Plots():
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot([i+1 for i in range(len(S))],S/max(S),'o',label='$\sigma_i$')   
-        if dataset_source == 'real':
-            xrange = np.concatenate(([1],np.arange(0,len(S)+5,5)))
+        if dataset_source == 'cat':
+            xrange = np.concatenate(([1],np.arange(5,len(S)+5,5)))
             yrange = np.arange(0.0,1.1,0.1)
-        else:
+        elif dataset_source == 'synthetic':
             xrange = np.concatenate(([1],np.arange(10,len(S)+10,10)))
             yrange = np.arange(0.6,1.2,0.2)
         ax.set_yscale('log')
-        # yrange = np.logspace(-2,0,3)
-        # ax.set_yticks(yrange)
-        # ax.set_yticklabels(['$10^{-2}$','$10^{-1}$','$1$'])
         ax.set_ylabel('Normalizaed\n singular values')
         ax.set_xlabel('$\it{i}$th singular value')
         
@@ -122,12 +119,12 @@ class Plots():
         fig1 = plt.figure()
         ax1 = fig1.add_subplot(111)
         ax1.plot([i+1 for i in range(len(S))],np.cumsum(S)/np.sum(S),'o',color='orange',label='Cumulative energy')
-        ax1.set_ylabel(r'Normalized $E_r$')
+        ax1.set_ylabel(r'Normalized $E_s$')
         
-        if dataset_source == 'real':
-            xrange = np.concatenate(([1],np.arange(0,len(S)+5,5)))
-            yrange = np.arange(0.0,1.15,0.2)
-        else:
+        if dataset_source == 'cat':
+            xrange = np.concatenate(([1],np.arange(5,len(S)+5,5)))
+            yrange = np.arange(0.0,1.1,0.1)
+        elif dataset_source == 'synthetic':
             xrange = np.concatenate(([1],np.arange(10,len(S)+10,10)))
             yrange = np.arange(0.7,1.0,0.05)
             
@@ -1075,25 +1072,20 @@ class Plots():
     def plot_rmse_validation(self,val_path,p_zero_plot,save_fig=False):
         
         # load results
-        rmse_train = {el:[] for el in np.arange(10,60,10)}
-        rmse_val = {el:[] for el in np.arange(10,60,10)}
-        for p_zero in np.arange(10,60,10):
-            fname = val_path+f'RMSE_All_train_{p_zero}RefSt.pkl'
-            with open(fname,'rb') as f:
-                rmse_alphas = pickle.load(f)
-            rmse_train[p_zero] = rmse_alphas
-            
-            fname = val_path+f'RMSE_All_validation_{p_zero}RefSt.pkl'
-            with open(fname,'rb') as f:
-                rmse_alphas = pickle.load(f)
-            rmse_val[p_zero] = rmse_alphas
+        fname = val_path+f'RMSE_All_train_{p_zero_plot}RefSt.pkl'
+        with open(fname,'rb') as f:
+            rmse_train = pickle.load(f)
+        
+        fname = val_path+f'RMSE_All_validation_{p_zero_plot}RefSt.pkl'
+        with open(fname,'rb') as f:
+            rmse_val = pickle.load(f)
         
         alphas = np.logspace(-2,2,5)
       
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(alphas,[i for i in rmse_train[p_zero_plot].values()],color='#1a5276',label='Training set')
-        ax.plot(alphas,[i for i in rmse_val[p_zero_plot].values()],color='orange',label='Validation set')
+        ax.plot(alphas,[i for i in rmse_train.values()],color='#1a5276',label='Training set')
+        ax.plot(alphas,[i for i in rmse_val.values()],color='orange',label='Validation set')
         ax.set_xscale('log')
         ax.set_xlabel(r'$\alpha$')
         ax.set_xticks(alphas)
@@ -1107,7 +1099,7 @@ class Plots():
         fig.tight_layout()
         
         if save_fig:
-            fname = f'{self.save_path}_ValidationPlot_RMSE_alphas_{p_zero_plot}RefSt.png'
+            fname = f'{self.save_path}ValidationPlot_RMSE_alphas_{p_zero_plot}RefSt.png'
             fig.savefig(fname,dpi=300,format='png')
             
             
@@ -1393,7 +1385,7 @@ class Plots():
             
     def plot_weights_evolution(self,Dopt_path,rank_path,r,n,p_empty,solving_algorithm,p_zero,alpha_reg):
         # load weights Dopt for different variances ratio
-        variances = np.array([1e-6,1e-4,1e-2,0.5,1e0])
+        variances = np.array([1e-6,1e-4,1e-2,1e-1,1e0])
         dict_weights_var_refst = {el:0 for el in variances}
         dict_weights_var_lcs = {el:0 for el in variances}
         

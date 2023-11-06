@@ -95,10 +95,13 @@ class DataSet():
         
         self.source = source
         
-        if source == 'real':
-            self.files_path = files_path
-        else:
+        if source == 'cat':
+            self.files_path = files_path+'Cat/'
+        elif source == 'synthetic':
             self.files_path = files_path+'SyntheticDataSet/'
+        else:
+            self.files_path = files_path+'Korea/'
+        
         
     def load_dataSet(self,n_years=12,n_stations=100):
         """
@@ -111,7 +114,7 @@ class DataSet():
 
         """
         # load real dataset
-        if self.source == 'real':
+        if self.source == 'cat':
             for rs in self.RefStations:
                 fname = f'{self.files_path}{self.pollutant}_{rs}_{self.startDate}_{self.endDate}.csv'
                 print(f'Loading data set {fname}')

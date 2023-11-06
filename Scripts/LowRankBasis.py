@@ -70,6 +70,26 @@ class LowRankBasis():
         self.U, self.S, self.V = np.linalg.svd(X_,full_matrices=False)# full_matrices False because of memory
         self.Psi = self.U[:,:self.r]
         
+    def cumulative_sum(self,percentage_interest):
+        """
+        Show ith singular value at which cumulative energy threshold is reached.
+
+        Parameters
+        ----------
+        percentage_interest : float
+            cumulative energy percentage
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        E_s = np.cumsum(self.S)/np.sum(self.S)
+        sing_val_threshold = np.argwhere(E_s >= percentage_interest)[0]+1 # add +1 for counting from 1 and not 0
+        print(f'Percentage of interest {percentage_interest*100}% reached at singular value {sing_val_threshold}')
+        
+        
     def reconstruction_error(self,r,norm,snapshots_matrix_test):
         """
         Compute SVD reconstruction error on both training set and validation set.
