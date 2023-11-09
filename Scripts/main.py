@@ -8,6 +8,7 @@ Created on Wed Oct 25 13:42:32 2023
 
 
 import os
+import sys
 import numpy as np
 import pickle 
 import pandas as pd
@@ -292,7 +293,7 @@ class PlacementSolutions():
                 
         print(f'Solver failed for {count} iterations with variances ratio {var_zero}')
         
-        
+#%%
 
 if __name__ == '__main__':
     abs_path = os.path.dirname(os.path.realpath(__file__))
@@ -304,17 +305,18 @@ if __name__ == '__main__':
     pollutant = 'O3'
     start_date = '2011-01-01'
     end_date = '2022-12-31'
-    dataset_source = 'cat' #['synthetic','cat','korea]
+    dataset_source = 'taiwan' #['synthetic','cat','taiwan]
     
     dataset = DS.DataSet(pollutant, start_date, end_date, files_path,source=dataset_source)
     dataset.load_dataSet()
-    dataset.cleanMissingvalues(strategy='stations',tol=0.1)
+    if dataset_source != 'taiwan':
+        dataset.cleanMissingvalues(strategy='stations',tol=0.1)
     dataset.cleanMissingvalues(strategy='remove')
     
     # train/val/test split
-    train_set_end = '2020-12-31 23:00:00'
-    val_set_begin = '2021-01-01 00:00:00'
-    val_set_end = '2021-12-31 23:00:00'
+    train_set_end = '2020-12-31 23:00:00' if dataset_source != 'taiwan' else '2021-12-31 23:00:00'
+    val_set_begin = '2021-01-01 00:00:00' if dataset_source != 'taiwan' else '2022-01-01 00:00:00'
+    val_set_end = '2021-12-31 23:00:00' if dataset_source != 'taiwan' else '2022-12-31 23:00:00'
     test_set_begin = '2022-01-01 00:00:00'
     dataset.train_test_split(train_set_end, val_set_begin, val_set_end,test_set_begin)
     
@@ -329,7 +331,8 @@ if __name__ == '__main__':
         lowrank_basis.low_rank_decomposition(normalize=True)
         lowrank_basis.cumulative_sum(percentage_threshold)
         plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,show_plots=True)
-        plots.plot_singular_values(lowrank_basis.S,dataset_source,save_fig=True)
+        plots.plot_singular_values(lowrank_basis.S,dataset_source,save_fig=False)
+        #plots.plot_sing_val_two_datasets(Sc, St, 'Catalonia', 'Taiwan',save_fig=True)
         
             
         
@@ -338,20 +341,20 @@ if __name__ == '__main__':
         r = 54
     elif dataset_source == 'cat':
         r = 34
-    elif dataset_source == 'korea':
-        r = 1
+    elif dataset_source == 'taiwan':
+        r = 50
     
     # variances ratio and regularization parameter
     p_empty = n-r
-    var_eps,var_zero = 1,1e-6
-    alpha_reg = 1e-2
+    var_eps,var_zero = 1,1e0
+    alpha_reg = 1e2
     num_random_placements = int(1e3)
-    solving_algorithm = 'D_optimal' #['D_optimal','rankMax']
+    solving_algorithm = 'rankMax' #['D_optimal','rankMax']
     placement_metric = 'logdet'
    
     
     plt.close('all')
-    place_sensors = False
+    place_sensors = True
     if place_sensors:
         print('Sensor placement\nCompute weights and locations')
         placement = CW.Placement(n, p_empty, r, dataset.ds_train, solving_algorithm, 
@@ -361,6 +364,7 @@ if __name__ == '__main__':
         placement.placement_random()
         placement.placement_allStations()
         placement.save_results(results_path)
+        sys.exit()
         
         
     else:
@@ -372,13 +376,13 @@ if __name__ == '__main__':
             Dopt_path = results_path+'Cat/TrainingSet_results/Doptimal/'
             rank_path = results_path+'Cat/TrainingSet_results/rankMax/'
         else:
-            Dopt_path = results_path+'Korea/TrainingSet_results/Doptimal/'
-            rank_path = results_path+'Korea/TrainingSet_results/rankMax/'
+            Dopt_path = results_path+'Taiwan/TrainingSet_results/Doptimal/'
+            rank_path = results_path+'Taiwan/TrainingSet_results/rankMax/'
             
         plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=3,fs_ticks=7,fs_legend=3,fs_title=10,show_plots=False)
         
         plt.close('all')
-        p_zero_plot = 10
+        p_zero_plot = 20
         alpha_plot = 1e-2 # from validation results for that number of ref.st.
         
         placement_solutions = PlacementSolutions(Dopt_path, rank_path)
@@ -425,23 +429,25 @@ if __name__ == '__main__':
                                                               alpha_plot, r, p_zero_plot, p_empty, 
                                                               locations_to_compare='RefSt')
       
-     
-        
-       
         
         
+  
         
   
         
     validate = False
     if validate:
         print(f'Validation {placement_metric} results on hold-out dataset')
+        input('Press Enter to continue')
         if dataset_source == 'synthetic':
-            train_path = results_path+f'Synthetic_Data/TrainingSet_results/rankMax/'
+            Dopt_path = results_path+'Synthetic_Data/TrainingSet_results/Doptimal/'
+            rank_path = results_path+'Synthetic_Data/TrainingSet_results/rankMax/'
         elif dataset_source == 'cat':
-            train_path = results_path+f'Cat/TrainingSet_results/rankMax/'
+            Dopt_path = results_path+'Cat/TrainingSet_results/Doptimal/'
+            rank_path = results_path+'Cat/TrainingSet_results/rankMax/'
         else:
-            train_path = results_path+f'Korea/TrainingSet_results/rankMax/'
+            Dopt_path = results_path+'Taiwan/TrainingSet_results/Doptimal/'
+            rank_path = results_path+'Taiwan/TrainingSet_results/rankMax/'
         
             
         lowrank_basis = LRB.LowRankBasis(dataset.ds_train, r)
@@ -449,19 +455,19 @@ if __name__ == '__main__':
         lowrank_basis.low_rank_decomposition(normalize=True)    
         dataset.project_basis(lowrank_basis.Psi)
       
-        p_zero_estimate = 30
+        p_zero_estimate = 10
         locations_to_estimate='All'
         
         alphas = np.logspace(-2,2,5)
         
         var_zero = 0.0 #rankMax gives solution for exact case variance == 0
         
-        ds_lcs_train = dataset.perturbate_signal(dataset.ds_train_projected, 15*var_eps, seed=92)
-        ds_refst_train = dataset.perturbate_signal(dataset.ds_train_projected, 15*var_zero, seed=92)
+        ds_lcs_train = dataset.perturbate_signal(dataset.ds_train_projected, var_eps, seed=92)
+        ds_refst_train = dataset.perturbate_signal(dataset.ds_train_projected, var_zero, seed=92)
         ds_real_train = dataset.ds_train_projected
         
-        ds_lcs_val = dataset.perturbate_signal(dataset.ds_val_projected, 15*var_eps, seed=92)
-        ds_refst_val = dataset.perturbate_signal(dataset.ds_val_projected, 15*var_zero, seed=92)
+        ds_lcs_val = dataset.perturbate_signal(dataset.ds_val_projected, var_eps, seed=92)
+        ds_refst_val = dataset.perturbate_signal(dataset.ds_val_projected, var_zero, seed=92)
         ds_real_val = dataset.ds_val_projected
         
         rmse_alpha_train = {el:[] for el in alphas}
@@ -498,7 +504,7 @@ if __name__ == '__main__':
         with open(fname,'wb') as f:
            pickle.dump(rmse_alpha_train,f)
            
-    
+        sys.exit()
      
     else:
         if dataset_source == 'synthetic':
@@ -516,6 +522,10 @@ if __name__ == '__main__':
         
     estimate = True
     if estimate:
+        
+        # estimate RMSE in the whole network using Dopt(variance dependant) and rankMax(alpha dependant) configurations.
+        # For a given variance the estimations are computed using GLS for both criteria
+        # rankMax gives an extra estimation for variance == 0.
         
         print('Estimation on testing set.\nComparing Doptimal solutions with rankMax solutions using GLS estimations.')
         input('Press Enter to continue ...')
@@ -535,18 +545,13 @@ if __name__ == '__main__':
             alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
             
         else:
-            Dopt_path = results_path+'Korea/TrainingSet_results/Doptimal/'
-            rank_path = results_path+'Korea/TrainingSet_results/rankMax/'
-            p_zero_range_validated = []
-            alphas_range = []
+            Dopt_path = results_path+'Taiwan/TrainingSet_results/Doptimal/'
+            rank_path = results_path+'Taiwan/TrainingSet_results/rankMax/'
+            p_zero_range_validated = [10,20,30,40]
+            alphas_range = [1e-2,1e1,1e0,1e2]
             alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
         
         # set of validated number of reference stations and respective alphas for rankMax criterion (on whole network)
-        
-        
-        # estimate RMSE in the whole network using Dopt(variance dependant) and rankMax(alpha dependant) configurations.
-        # For a given variance the estimations are computed using GLS for both criteria
-        # rankMax gives an extra estimation for variance == 0.
         
         lowrank_basis = LRB.LowRankBasis(dataset.ds_train, r)
         lowrank_basis.snapshots_matrix()

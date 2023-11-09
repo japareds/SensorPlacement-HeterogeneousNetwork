@@ -100,7 +100,7 @@ class DataSet():
         elif source == 'synthetic':
             self.files_path = files_path+'SyntheticDataSet/'
         else:
-            self.files_path = files_path+'Korea/'
+            self.files_path = files_path+'Taiwan/'
         
         
     def load_dataSet(self,n_years=12,n_stations=100):
@@ -128,6 +128,12 @@ class DataSet():
             fname = f'{self.files_path}{self.pollutant}_SyntheticData_{self.startDate}_{self.endDate}_{n_stations}stations.pkl'
             with open(fname,'rb') as f:
                 self.ds = pickle.load(f)
+        
+        # load Taiwan LCSs dataset: this dataset is smaller
+        else:
+            fname = f'{self.files_path}{self.pollutant}_Taiwan_2021_2022.csv'
+            self.ds = pd.read_csv(fname)
+            self.ds.set_index('date',drop=True,inplace=True)
 
          
             
@@ -201,7 +207,7 @@ class DataSet():
         if strategy == 'remove':
             print('Removing missing values')
             self.ds.dropna(inplace=True)
-            print(f'Entries with missing values remiaining:\n{self.ds.isna().sum()}')
+            print(f'Entries with missing values remaining:\n{self.ds.isna().sum()}')
             print(f'{self.ds.shape[0]} remaining measurements')
             
         elif strategy == 'interpolate':

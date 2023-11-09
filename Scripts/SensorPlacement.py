@@ -111,7 +111,7 @@ class SensorPlacement:
         self.h_zero = h_zero
         self.problem = problem
     
-    def rankMax_placement(self,Psi,alpha):
+    def rankMax_placement(self,Psi,alpha,substract=False):
         """
         Sensor placement proposed heuristics for unmonitored locations (p_empty !=0)
         Maximize the rank for reference stations locations while minimizing volume of ellipsoid for LCSs
@@ -131,7 +131,12 @@ class SensorPlacement:
         h_eps = cp.Variable(shape=self.n,value=np.zeros(self.n))
         h_zero = cp.Variable(shape = self.n,value=np.zeros(self.n))
         objective_eps = -1*cp.log_det(cp.sum([h_eps[i]*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
-        objective_zero = -alpha*cp.trace(cp.sum([h_zero[i]*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+        if substract:
+            print('Objective function for trace will be negative: logdet(LCS) - alpha*Tr(RefSt)')
+            objective_zero = -alpha*cp.trace(cp.sum([h_zero[i]*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+        else:
+            objective_zero = alpha*cp.trace(cp.sum([h_zero[i]*Psi[i,:][None,:].T@Psi[i,:][None,:] for i in range(self.n)]))
+            
         objective = objective_eps + objective_zero
         constraints = [cp.sum(h_zero) == self.p_zero,
                        cp.sum(h_eps) == self.p_eps,
@@ -200,23 +205,7 @@ class SensorPlacement:
         self.h_zero = h_zero
         self.problem = problem
         
-    def KKT_placement(self,Psi):
-        """
-        D-optimal sensor placement using covariance matrix from KKT solution
-
-        Parameters
-        ----------
-        Psi : np array
-            Reduced basis of shape (number of locations, number of vectors)
-
-        Returns
-        -------
-        None.
-
-        """
-        h_zero = cp.Variable(shape = self.n,value=np.zeros(self.n))
-        h_eps = cp.Variable(shape=self.n,value=np.zeros(self.n))
-        #objective = cp.log_det()
+   
         
     
     def check_consistency(self):
@@ -432,7 +421,7 @@ class SensorPlacement:
             self.metric_convex = np.log(np.linalg.det(self.Cov_convex))
         
 
-    def covariance_matrix(self,Psi,metric,alpha=0.1,activate_error_solver=True):
+    def covariance_matrix(self,Psi,metric='logdet',alpha=0.1,activate_error_solver=True):
         """
         Compute covariance matrix from C matrices and compute a metric
 
@@ -506,21 +495,16 @@ class SensorPlacement:
         None.
 
         """
-        C_eps = self.C[0]
-        C_zero = self.C[1]
-        Theta_eps = C_eps@Psi
-        Theta_zero = C_zero@Psi
-        
-        refst_matrix = Theta_zero.T@Theta_zero
-        refst_pinv = np.linalg.pinv(refst_matrix)
-        
-        lcs_matrix = Theta_eps.T@Theta_eps
-        lcs_pinv = np.linalg.pinv(lcs_matrix)
-        
+        C_lcs = self.C[0]
+        C_refst = self.C[1]
+        Theta_lcs = C_lcs@Psi
+        Theta_refst = C_refst@Psi
+        refst_matrix = Theta_refst.T@Theta_refst
         
         Is = np.identity(self.r)
-        term = Is - refst_matrix@refst_pinv
-        self.Cov = term@lcs_pinv@term
+        P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+        
+        self.Cov = self.var_eps*np.linalg.pinv(Theta_lcs@P)@np.linalg.pinv(P@Theta_lcs.T)
         
         
         
@@ -572,17 +556,19 @@ class SensorPlacement:
                 estimated regressor over time (r,num_samples)
 
         """
-        C_eps = self.C[0]
-        C_zero = self.C[1]
-        Theta_eps = C_eps@Psi
-        Theta_zero = C_zero@Psi
+        C_lcs = self.C[0]
+        C_refst = self.C[1]
+        Theta_lcs = C_lcs@Psi
+        Theta_refst = C_refst@Psi
+        refst_matrix = Theta_refst.T@Theta_refst
         
-        refst_pinv = np.linalg.pinv(Theta_zero.T@Theta_zero)
-        lcs_pinv = np.linalg.pinv(Theta_eps.T@Theta_eps)
         Is = np.identity(self.r)
+        P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
         
-        P = Is - Theta_zero.T@Theta_zero@refst_pinv
-        self.beta_hat = P@lcs_pinv@P@Theta_eps.T@y_lcs + np.linalg.pinv(Theta_zero)@y_refst
+        term_refst = np.linalg.pinv(Theta_refst) #np.linalg.pinv(refst_matrix)@Theta_refst.T@y_refst
+        term_lcs = np.linalg.pinv(Theta_lcs@P)@np.linalg.pinv(P@Theta_lcs.T)@Theta_lcs.T
+        
+        self.beta_hat = term_lcs@y_lcs + term_refst@y_refst
         
         
         

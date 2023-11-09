@@ -104,6 +104,10 @@ class Plots():
         elif dataset_source == 'synthetic':
             xrange = np.concatenate(([1],np.arange(10,len(S)+10,10)))
             yrange = np.arange(0.6,1.2,0.2)
+        else:
+            xrange = np.concatenate(([1],np.arange(5,len(S)+5,5)))
+            yrange = np.arange(0.0,1.1,0.1)
+            
         ax.set_yscale('log')
         ax.set_ylabel('Normalizaed\n singular values')
         ax.set_xlabel('$\it{i}$th singular value')
@@ -145,6 +149,75 @@ class Plots():
 
         
         return fig,fig1
+    
+    def plot_sing_val_two_datasets(self,S1,S2,label1,label2,save_fig=False):
+        """
+        Plot singular values comparison for two datasets
+        
+        Parameters
+        ----------
+        S1 : numpy.ndarray
+            singular values dataset 1
+        
+        S2 : numpy array
+            singular values dataset 2
+        
+       sv_threshold : float
+           threshold for cumulative energy used for low-rank apporximation
+        
+        Returns
+        -------
+        fig, fig1 : mpl figures
+            normalized singular values and cumulative sum plots
+        """
+        x_max = np.maximum(len(S1),len(S2))
+        xrange = np.concatenate(([1],np.arange(5,x_max+5,5)))
+        yrange = np.arange(0.0,1.1,0.1)
+        
+        
+        # singular values
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot([i+1 for i in range(len(S1))],S1/max(S1),'-o',label=f'{label1}',color='#1a5276')
+        ax.plot([i+1 for i in range(len(S2))],S2/max(S2),'-o',label=f'{label2}',color='#117864')
+        
+           
+        ax.set_yscale('log')
+        ax.set_ylabel('Normalizaed\n singular values')
+        ax.set_xlabel('$\it{i}$th singular value')
+        
+        ax.set_xticks(xrange)
+        ax.set_xticklabels(ax.get_xticks())
+        ax.legend(loc='best',ncol=1)
+        ax.tick_params(axis='both', which='major')        
+        fig.tight_layout()
+        
+        fig1 = plt.figure()
+        ax1 = fig1.add_subplot(111)
+        ax1.plot([i+1 for i in range(len(S1))],np.cumsum(S1)/np.sum(S1),'-o',color='#1a5276',label=f'{label1}')
+        ax1.plot([i+1 for i in range(len(S2))],np.cumsum(S2)/np.sum(S2),'-o',color='#117864',label=f'{label2}')
+        
+        ax1.set_ylabel(r'Normalized $E_s$')
+            
+        ax1.set_yticks(yrange)
+        ax1.set_yticklabels([f'{np.round(i,decimals=2)}' for i in ax1.get_yticks()])
+        ax1.set_xlabel('$\it{i}$th singular value')
+        
+        ax1.set_xticks(xrange)
+        ax1.set_xticklabels(ax1.get_xticks())
+        ax1.legend(loc='best',ncol=1)
+        ax1.tick_params(axis='both', which='major')
+        fig1.tight_layout()
+        
+        if save_fig:
+            fig.savefig(self.save_path+'singularValues_2datasets.png',dpi=600,format='png')
+            fig1.savefig(self.save_path+'singularValues_cumsum_2datasets.png',dpi=600,format='png')
+            print(f'Figures saved in: {self.save_path}')
+            
+
+        
+        return fig,fig1
+    
     
     # =============================================================================
     # CONVEX OPTIMIZATION RESULTS
