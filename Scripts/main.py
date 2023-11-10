@@ -560,7 +560,7 @@ if __name__ == '__main__':
         
         p_zero_estimate = 49
         alpha_reg = alphas[p_zero_estimate]
-        locations_to_estimate='All'
+        locations_to_estimate='All' #['All','RefSt','LCSs','Empty']
         
         variances = np.concatenate(([0.0],[1e-15],np.logspace(-6,0,7)))
         dict_rmse_var = {el:np.inf for el in variances}
