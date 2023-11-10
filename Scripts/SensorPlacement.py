@@ -481,6 +481,27 @@ class SensorPlacement:
                 self.metric = np.inf
                 self.metric_precisionMatrix = -np.inf
                 
+    def covariance_matrix_GLS(self,Psi):
+        """
+        Compute covariance matrix from GLS. Use pseudo-inverse to account for unstable behavior
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+
+        Returns
+        -------
+        None.
+
+        """
+        C_lcs = self.C[0]
+        C_refst = self.C[1]
+        Theta_lcs = C_lcs@Psi
+        Theta_refst = C_refst@Psi
+        
+        self.Cov = np.linalg.pinv( (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs )
+                
     def covariance_matrix_limit(self,Psi):
         """
         Compute covariance matrix in the limit var_zero = 0
@@ -565,7 +586,7 @@ class SensorPlacement:
         Is = np.identity(self.r)
         P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
         
-        term_refst = np.linalg.pinv(Theta_refst) #np.linalg.pinv(refst_matrix)@Theta_refst.T@y_refst
+        term_refst = np.linalg.pinv(Theta_refst)
         term_lcs = np.linalg.pinv(Theta_lcs@P)@np.linalg.pinv(P@Theta_lcs.T)@Theta_lcs.T
         
         self.beta_hat = term_lcs@y_lcs + term_refst@y_refst

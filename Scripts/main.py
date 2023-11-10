@@ -515,8 +515,8 @@ if __name__ == '__main__':
             val_path = results_path+'Korea/ValidationSet_results/'
             
         plt.close('all')
-        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=10,fs_ticks=7,fs_legend=7,fs_title=10,show_plots=True)
-        plots.plot_rmse_validation(val_path,p_zero_plot=30,save_fig=True)
+        plots = Plots.Plots(save_path=results_path,marker_size=1,fs_label=10,fs_ticks=7,fs_legend=7,fs_title=10,show_plots=False)
+        plots.plot_rmse_validation(val_path,p_zero_plot=30,save_fig=False)
         
         print('Validation Finished')
         
@@ -558,11 +558,11 @@ if __name__ == '__main__':
         lowrank_basis.low_rank_decomposition(normalize=True)
         dataset.project_basis(lowrank_basis.Psi)
         
-        p_zero_estimate = 10
+        p_zero_estimate = 49
         alpha_reg = alphas[p_zero_estimate]
         locations_to_estimate='All'
         
-        variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
+        variances = np.concatenate(([0.0],[1e-15],np.logspace(-6,0,7)))
         dict_rmse_var = {el:np.inf for el in variances}
         
         for var in variances:

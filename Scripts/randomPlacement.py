@@ -231,6 +231,39 @@ class randomPlacement():
         noise = rng.normal(loc=0.0,scale=variance,size=ds_signal.shape)
         return ds_signal+noise
     
+    def covariance_matrix_GLS(self,Psi,var_eps,var_zero):
+        """
+        Compute GLS covariance matrix
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+        var_eps : float
+            LCS variance
+        var_zero : float
+            Ref st. variance
+
+        Returns
+        -------
+        None.
+
+        """
+        Covariances = {el:0 for el in np.arange(len(self.locations))}
+       
+        for idx in self.locations.keys():
+            C_eps = self.C[idx][0]
+            C_zero = self.C[idx][1]
+            
+            Theta_eps = C_eps@Psi
+            Theta_zero = C_zero@Psi
+            
+            Precision_matrix = (var_eps**(-1)*Theta_eps.T@Theta_eps) + (var_zero**(-1)*Theta_zero.T@Theta_zero)
+            Cov = np.linalg.pinv( Precision_matrix )
+            
+            Covariances[idx] = Cov
+        self.Covariances = Covariances
+    
     def beta_estimated(self,Psi,ds_lcs,ds_refst,var_eps,var_zero):
         """
         Compute GLS estimated regressor
@@ -296,24 +329,27 @@ class randomPlacement():
         self.beta_hat = {el:0 for el in np.arange(len(self.locations))}
         
         for idx in self.locations.keys():
-            C_eps = self.C[idx][0]
-            C_zero = self.C[idx][1]
+            C_lcs = self.C[idx][0]
+            C_refst = self.C[idx][1]
             
-            Theta_eps = C_eps@Psi
-            Theta_zero = C_zero@Psi
+            Theta_lcs = C_lcs@Psi
+            Theta_refst = C_refst@Psi
             
-            refst_pinv = np.linalg.pinv(Theta_zero.T@Theta_zero)
-            lcs_pinv = np.linalg.pinv(Theta_eps.T@Theta_eps)
+            refst_matrix = Theta_refst.T@Theta_refst
+            
             Is = np.identity(r)
-            P = Is - Theta_zero.T@Theta_zero@refst_pinv
+            P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+            
+            term_refst = np.linalg.pinv(Theta_refst) #np.linalg.pinv(refst_matrix)@Theta_refst.T@y_refst
+            term_lcs = np.linalg.pinv(Theta_lcs@P)@np.linalg.pinv(P@Theta_lcs.T)@Theta_lcs.T
             
             locations = self.locations[idx]
-            
             y_refst = ds_lcs.loc[:,locations[1]].T
             y_lcs = ds_refst.loc[:,locations[0]].T
             
             
-            self.beta_hat[idx] = P@lcs_pinv@P@Theta_eps.T@y_lcs + np.linalg.pinv(Theta_zero)@y_refst
+            self.beta_hat[idx] = term_lcs@y_lcs + term_refst@y_refst 
+            
             
         
             

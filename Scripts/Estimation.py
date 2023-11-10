@@ -54,10 +54,89 @@ class Estimation():
         
     
     def perturbate_signal(self,ds_signal,variance,seed):
+        """
+        Add noise to signal
+
+        Parameters
+        ----------
+        ds_signal : pandas dataframe
+            original signal. Multiple measurements over time
+        variance : float
+            noise variance
+        seed : int
+            rng seed
+
+        Returns
+        -------
+        pandas dataframe
+            perturbated signal
+        """
         rng = np.random.default_rng(seed)
         noise = rng.normal(loc=0.0,scale=variance,size=ds_signal.shape)
         return ds_signal+noise
+    
+    
+    def get_estimated_measurements(self,beta_hat,y_real):
         
+        # predicted values in all network
+        y_hat = self.Psi@beta_hat
+        y_pred = y_hat.T
+        y_pred.columns = y_real.columns
+        
+        return y_pred
+    
+    def compute_metrics(self,y_real,y_pred,y_refst,y_lcs,y_empty,locations_to_estimate='All'):
+        """
+        Compute estimation error
+
+        Parameters
+        ----------
+        y_real : pandas dataframe
+            Full entwork actual values
+        y_pred : pandas dataframe
+            Full network predicted values
+        y_refst : pandas dataframe
+            Reference stations measurements at locations
+        y_lcs : pandas dataframe
+            LCSs measurements at locations
+        y_empty : pandas dataframe
+            True values at unmonitored locations
+        locations_to_estimate : str, optional
+            Locations used to compute error. ['All','RefSt','LCSs','Empty']. The default is 'All'.
+
+        Returns
+        -------
+        [rmse,mae]
+            RMSE and MAE errors
+        """
+        
+        if locations_to_estimate not in ['All','RefSt','LCSs','Empty']:
+            raise ValueError(f'Locations where to compute error -{locations_to_estimate}- is not valid.')
+            
+        # full network metrics
+        if locations_to_estimate == 'All':
+            
+            rmse = np.sqrt(mean_squared_error(y_real, y_pred))
+            mae =  mean_absolute_error(y_real, y_pred)
+            
+        # error at reference stations locations
+        elif locations_to_estimate == 'RefSt':
+            rmse = np.sqrt(mean_squared_error(y_real.loc[:,y_refst.columns],y_pred.loc[:,y_refst.columns]))
+            mae = mean_absolute_error(y_real.loc[:,y_refst.columns],y_pred.loc[:,y_refst.columns])
+            
+        # error at LCSs locations
+        elif locations_to_estimate == 'LCSs':
+            rmse = np.sqrt(mean_squared_error(y_real.loc[:,y_lcs.columns], y_pred.loc[:,y_lcs.columns]))
+            mae = mean_absolute_error(y_real.loc[:,y_lcs.columns], y_pred.loc[:,y_lcs.columns])
+
+        # error at unmonitored locations
+        elif locations_to_estimate == 'Empty':
+            rmse = np.sqrt(mean_squared_error(y_real.loc[:,y_empty.columns], y_pred.loc[:,y_empty.columns]))
+            mae = mean_absolute_error(y_real.loc[:,y_empty.columns], y_pred.loc[:,y_empty.columns])
+    
+        return [rmse,mae]
+        
+    
     def random_placement_estimation(self, random_path):
         
         fname = random_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
@@ -68,11 +147,39 @@ class Estimation():
         
         # random placement estimation
         random_placement = RP.randomPlacement(p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
+        # obtain locations and covariance matrices
         random_placement.locations = dict_random_locations[self.p_zero_estimate]
         random_placement.C_matrix()
-        random_placement.Cov_metric(self.Psi, self.var_eps, self.var_zero,self.placement_metric)
+        random_placement.covariance_matrix_GLS(self.Psi, self.var_eps, self.var_zero)
         
+        # get estimated measurements using beta GLS
         random_placement.beta_estimated(self.Psi,self.ds_lcs,self.ds_refst,self.var_eps,self.var_zero)
+        random_placement.estimation(self.Psi,self.ds_real,self.var_eps,self.var_zero,self.locations_to_estimate)
+        rmse_random_placement = np.array([i for i in random_placement.rmse.values()])
+        mae_random_placement = np.array([i for i in random_placement.mae.values()])
+        
+        self.rmse_best_random = rmse_random_placement.min()
+        self.rmse_ci_random = mean_confidence_interval(rmse_random_placement, confidence=0.90)
+        self.mae_best_random = mae_random_placement.min()
+        
+        
+      
+    def random_placement_estimation_limit(self, random_path):
+        
+        fname = random_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
+        with open(fname,'rb') as f:
+            dict_random_locations = pickle.load(f)
+            
+        p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
+        
+        # random placement estimation
+        random_placement = RP.randomPlacement(p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
+        # obtain locations
+        random_placement.locations = dict_random_locations[self.p_zero_estimate]
+        random_placement.C_matrix()
+        
+        # get estimated measurements using beta(epsilon=0)
+        random_placement.beta_estimated_limit(self.Psi,self.ds_lcs,self.ds_refst,self.r)
         random_placement.estimation(self.Psi,self.ds_real,self.var_eps,self.var_zero,self.locations_to_estimate)
         rmse_random_placement = np.array([i for i in random_placement.rmse.values()])
         mae_random_placement = np.array([i for i in random_placement.mae.values()])
@@ -81,68 +188,76 @@ class Estimation():
         self.mae_best_random = mae_random_placement.min()
         
     def Dopt_placement_estimation(self):
+        """
+        Compute estimated signal (and errors) from distribution obtained with D-optimal criterion at given variances ratio.
+        The estimation uses GLS and errors are RMSE,MAE.
+
+        Returns
+        -------
+        None.
+
+        """
         p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
         sensor_placement = SP.SensorPlacement('D_optimal', self.n, self.r, self.p_zero_estimate, p_eps_estimate,
                                               self.p_empty, self.var_eps, self.var_zero)
         
         sensor_placement.initialize_problem(self.Psi,self.alpha_reg)
-        sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
-        
-        sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
-        sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
+        try:
+            sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
+            
+            sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
+            sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
+        except:
+            sensor_placement.locations = [np.zeros(self.n),np.zeros(self.n),np.zeros(self.n)]
+            sensor_placement.weights = [np.zeros(self.n),np.zeros(self.n)]
+            
         print(f'Dopt chosen locations for epsilon {self.var_zero} sigma {self.var_eps}\n{sensor_placement.locations}')
         
         if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
             print(f'No solution found for D-optimal with {self.p_zero_estimate} reference stations\n')
             self.rmse_Dopt = np.inf
             self.mae_Dopt =  np.inf
-            
-            self.rmse_stations_Dopt = [np.inf]
-            self.mae_stations_Dopt = [np.inf]
-            
             return
         
         # compute location and covariance matrix
         sensor_placement.C_matrix()
-        sensor_placement.covariance_matrix(self.Psi,metric=self.placement_metric,activate_error_solver=False)
+        sensor_placement.covariance_matrix_GLS(self.Psi)
         
         # sensors measurements (with noise)
         y_lcs = self.ds_lcs.loc[:,sensor_placement.locations[0]]
         y_refst = self.ds_refst.loc[:,sensor_placement.locations[1]]
         y_empty = self.ds_real.loc[:,sensor_placement.locations[2]]
+        y_real = self.ds_real
         
         # estimated regressor
         sensor_placement.beta_estimated_GLS(self.Psi,y_refst.T,y_lcs.T)
-        # estimate at certain locations
-        if self.locations_to_estimate == 'empty':
-            l=2
-            y_real = y_empty
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'RefSt':
-            l=1
-            y_real = y_refst
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'LCSs':
-            l=0
-            y_real = y_lcs
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'All':
-            y_real = self.ds_real
-            C = np.identity(self.n)
-            
-        y_hat = C@self.Psi@sensor_placement.beta_hat
-        y_pred = y_hat.T
-        y_pred.columns = y_real.columns
+           
+        # estimated signal
+        y_pred = self.get_estimated_measurements(sensor_placement.beta_hat,y_real)
         
-        # compute metric
-        # metrics
-        self.rmse_Dopt = np.sqrt(mean_squared_error(y_real, y_pred))
-        self.mae_Dopt =  mean_absolute_error(y_real, y_pred)
+        # compute error metrics
+        [self.rmse_Dopt,self.mae_Dopt] = self.compute_metrics(y_real, y_pred, y_refst, y_lcs, y_empty,self.locations_to_estimate)
         
-        self.rmse_stations_Dopt = [np.sqrt(mean_squared_error(y_real.iloc[:,i],y_pred.iloc[:,i])) for i in range(y_real.shape[1])]
-        self.mae_stations_Dopt = [mean_absolute_error(y_real.iloc[:,i],y_pred.iloc[:,i]) for i in range(y_real.shape[1])]
         
     def Dopt_placement_convergene(self,var_orig=1e0):
+        """
+        Compute estimated signal (and errors) from distribution obtained with D-optimal criterion for specific variances ratio
+        (var_orig).
+        Then, re-compute estimations for lower variances ratio but maintaining the sensors distribution.
+        The estimations are GLS.
+        The errors are RMSE, MAE
+
+        Parameters
+        ----------
+        var_orig : float , optional
+            variances ratio used for distribution. The default is 1e0.
+
+        Returns
+        -------
+        None.
+
+        """
+        
         p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
         sensor_placement = SP.SensorPlacement('D_optimal', self.n, self.r, self.p_zero_estimate, p_eps_estimate,
                                               self.p_empty, self.var_eps, var_orig)
@@ -152,7 +267,7 @@ class Estimation():
         
         sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
         sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
-        print(f'Dopt chosen locations for epsilon {self.var_zero} sigma {self.var_eps}\n{sensor_placement.locations}')
+        print(f'Dopt chosen locations for epsilon {var_orig} sigma {self.var_eps}\n{sensor_placement.locations}')
         
         if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
             print(f'No solution found for D-optimal with {self.p_zero_estimate} reference stations\n')
@@ -170,7 +285,7 @@ class Estimation():
         sensor_placement.var_zero = self.var_zero
         
         if self.var_zero != 0:
-            sensor_placement.covariance_matrix(self.Psi,metric=self.placement_metric,activate_error_solver=False)
+            sensor_placement.covariance_matrix_GLS(self.Psi)
         else:
             sensor_placement.covariance_matrix_limit(self.Psi)
         
@@ -178,43 +293,32 @@ class Estimation():
         y_lcs = self.ds_lcs.loc[:,sensor_placement.locations[0]]
         y_refst = self.ds_refst.loc[:,sensor_placement.locations[1]]
         y_empty = self.ds_real.loc[:,sensor_placement.locations[2]]
+        y_real = self.ds_real
         
         # estimated regressor
         if self.var_zero !=0:
             sensor_placement.beta_estimated_GLS(self.Psi,y_refst.T,y_lcs.T)
         else:
             sensor_placement.beta_estimated_limit(self.Psi,y_refst.T,y_lcs.T)
-            
-        # estimate at certain locations
-        if self.locations_to_estimate == 'empty':
-            l=2
-            y_real = y_empty
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'RefSt':
-            l=1
-            y_real = y_refst
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'LCSs':
-            l=0
-            y_real = y_lcs
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'All':
-            y_real = self.ds_real
-            C = np.identity(self.n)
-            
-        y_hat = C@self.Psi@sensor_placement.beta_hat
-        y_pred = y_hat.T
-        y_pred.columns = y_real.columns
         
-        # compute metric
-        # metrics
-        self.rmse_Dopt_convergence = np.sqrt(mean_squared_error(y_real, y_pred))
-        self.mae_Dopt_convergence =  mean_absolute_error(y_real, y_pred)
+        # estimated signal
+        y_pred = self.get_estimated_measurements(sensor_placement.beta_hat,y_real)
         
-        self.rmse_stations_Dopt_convergence = [np.sqrt(mean_squared_error(y_real.iloc[:,i],y_pred.iloc[:,i])) for i in range(y_real.shape[1])]
-        self.mae_stations_Dopt_convergence = [mean_absolute_error(y_real.iloc[:,i],y_pred.iloc[:,i]) for i in range(y_real.shape[1])]
+        # compute error metrics
+        [self.rmse_Dopt_convergence,self.mae_Dopt_convergence] = self.compute_metrics(y_real, y_pred, y_refst, y_lcs, y_empty,self.locations_to_estimate)
+            
         
     def rankMax_placement_estimation(self):
+        """
+        Compute estimated signal (and errors) using sensors distribution obtained with rankMax criterion.
+        The estimations use GLS with specific variances ratio.
+        The errors are RMSE,MAE
+
+        Returns
+        -------
+        None.
+
+        """
         
         p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
         sensor_placement = SP.SensorPlacement('rankMax', self.n, self.r, self.p_zero_estimate, p_eps_estimate,
@@ -233,48 +337,28 @@ class Estimation():
         
         # compute location and covariance matrix
         sensor_placement.C_matrix()
-        sensor_placement.covariance_matrix(self.Psi,metric=self.placement_metric,activate_error_solver=False)
+        sensor_placement.covariance_matrix_GLS(self.Psi)
         
         # sensors measurements (with noise)
         y_lcs = self.ds_lcs.loc[:,sensor_placement.locations[0]]
         y_refst = self.ds_refst.loc[:,sensor_placement.locations[1]]
         y_empty = self.ds_real.loc[:,sensor_placement.locations[2]]
+        y_real = self.ds_real
         
         # estimated regressor
         sensor_placement.beta_estimated_GLS(self.Psi,y_refst.T,y_lcs.T)
-        # estimate at certain locations
-        if self.locations_to_estimate == 'empty':
-            l=2
-            y_real = y_empty
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'RefSt':
-            l=1
-            y_real = y_refst
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'LCSs':
-            l=0
-            y_real = y_lcs
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'All':
-            y_real = self.ds_real
-            C = np.identity(self.n)
+        
+        # estimated signal
+        y_pred = self.get_estimated_measurements(sensor_placement.beta_hat,y_real)
+        
+        # compute error metrics
+        [self.rmse_rankMax,self.mae_rankMax] = self.compute_metrics(y_real, y_pred, y_refst, y_lcs, y_empty,self.locations_to_estimate)
             
-        y_hat = C@self.Psi@sensor_placement.beta_hat
-        y_pred = y_hat.T
-        y_pred.columns = y_real.columns
-        
-        # compute metric
-        # metrics
-        self.rmse_rankMax = np.sqrt(mean_squared_error(y_real, y_pred))
-        self.mae_rankMax =  mean_absolute_error(y_real, y_pred)
-        
-        self.rmse_stations_rankMax = [np.sqrt(mean_squared_error(y_real.iloc[:,i],y_pred.iloc[:,i])) for i in range(y_real.shape[1])]
-        self.mae_stations_rankMax = [mean_absolute_error(y_real.iloc[:,i],y_pred.iloc[:,i]) for i in range(y_real.shape[1])]
         
     def rankMax_placement_estimation_limit(self):
         """
-        dataset estimation using measurements at locations determined with rankMax criterion
-        The estimation uses the estimated_regressor (beta_hat) for the limit variances_ratio -> 0
+        Compute estimated signal (and errors) using distribution obtained with rankMax criterion.
+        The estimations use the limit of the GLS regressor at variances_ratio -> 0
 
         Returns
         -------
@@ -305,62 +389,23 @@ class Estimation():
         y_lcs = self.ds_lcs.loc[:,sensor_placement.locations[0]]
         y_refst = self.ds_refst.loc[:,sensor_placement.locations[1]]
         y_empty = self.ds_real.loc[:,sensor_placement.locations[2]]
-        
+        y_real = self.ds_real
         
         # estimated regressor using beta_hat(epsilon->0+)
         sensor_placement.beta_estimated_limit(self.Psi,y_refst.T,y_lcs.T)
-        # estimate at certain locations
-        if self.locations_to_estimate == 'empty':
-            l=2
-            y_real = y_empty
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'RefSt':
-            l=1
-            y_real = y_refst
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'LCSs':
-            l=0
-            y_real = y_lcs
-            C = sensor_placement.C[l]
-        elif self.locations_to_estimate == 'All':
-            y_real = self.ds_real
-            C = np.identity(self.n)
-            
-        y_hat = C@self.Psi@sensor_placement.beta_hat
-        y_pred = y_hat.T
-        y_pred.columns = y_real.columns
         
-        # compute metric
-        # metrics
-        self.rmse_rankMax = np.sqrt(mean_squared_error(y_real, y_pred))
-        self.mae_rankMax =  mean_absolute_error(y_real, y_pred)
+        # estimated signal
+        y_pred = self.get_estimated_measurements(sensor_placement.beta_hat,y_real)
         
-        self.rmse_stations_rankMax = [np.sqrt(mean_squared_error(y_real.iloc[:,i],y_pred.iloc[:,i])) for i in range(y_real.shape[1])]
-        self.mae_stations_rankMax = [mean_absolute_error(y_real.iloc[:,i],y_pred.iloc[:,i]) for i in range(y_real.shape[1])]
+        # compute error metrics
+        [self.rmse_rankMax,self.mae_rankMax] = self.compute_metrics(y_real, y_pred, y_refst, y_lcs, y_empty,self.locations_to_estimate)
          
-    
-    def random_placement_estimation_limit(self, random_path):
-        
-        fname = random_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
-        with open(fname,'rb') as f:
-            dict_random_locations = pickle.load(f)
-            
-        p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
-        
-        # random placement estimation
-        random_placement = RP.randomPlacement(p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
-        random_placement.locations = dict_random_locations[self.p_zero_estimate]
-        random_placement.C_matrix()
-        
-        random_placement.beta_estimated_limit(self.Psi,self.ds_lcs,self.ds_refst,self.r)
-        random_placement.estimation(self.Psi,self.ds_real,self.var_eps,self.var_zero,self.locations_to_estimate)
-        rmse_random_placement = np.array([i for i in random_placement.rmse.values()])
-        mae_random_placement = np.array([i for i in random_placement.mae.values()])
-        self.rmse_best_random = rmse_random_placement.min()
-        self.rmse_ci_random = mean_confidence_interval(rmse_random_placement, confidence=0.90)
-        self.mae_best_random = mae_random_placement.min()
+  
     
     
+# =============================================================================
+# OLD CODE     
+# =============================================================================
         
     
     def compute_estimations(self):
