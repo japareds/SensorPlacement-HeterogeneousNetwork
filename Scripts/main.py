@@ -547,8 +547,8 @@ if __name__ == '__main__':
         else:
             Dopt_path = results_path+'Taiwan/TrainingSet_results/Doptimal/'
             rank_path = results_path+'Taiwan/TrainingSet_results/rankMax/'
-            p_zero_range_validated = [10,20,30,40]
-            alphas_range = [1e-2,1e1,1e0,1e2]
+            p_zero_range_validated = [1,10,20,30,40,49]
+            alphas_range = [1e-2,1e-2,1e1,1e0,1e2,1e2]
             alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
         
         # set of validated number of reference stations and respective alphas for rankMax criterion (on whole network)
@@ -558,16 +558,16 @@ if __name__ == '__main__':
         lowrank_basis.low_rank_decomposition(normalize=True)
         dataset.project_basis(lowrank_basis.Psi)
         
-        p_zero_estimate = 49
+        p_zero_estimate = 1
         alpha_reg = alphas[p_zero_estimate]
-        locations_to_estimate='All' #['All','RefSt','LCSs','Empty']
+        locations_to_estimate='All' # choose one from: ['All','RefSt','LCSs','Empty']
         
         variances = np.concatenate(([0.0],[1e-15],np.logspace(-6,0,7)))
         dict_rmse_var = {el:np.inf for el in variances}
         
         for var in variances:
             
-            ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=92)#30/10 synthetic (var -2..0/-3..-6)/20 cat
+            ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=92)
             ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected,var, seed=92)
             ds_real_test = dataset.ds_test_projected
         
