@@ -401,6 +401,66 @@ class Estimation():
         [self.rmse_rankMax,self.mae_rankMax] = self.compute_metrics(y_real, y_pred, y_refst, y_lcs, y_empty,self.locations_to_estimate)
          
   
+    def rankMax_covariance_estimation_analytical(self,criterion='rankMax'):
+        """
+        Compute analytical MSE from sensors distributions in the network.
+
+        Parameters
+        ----------
+        criterion : str
+            algorithm used for obtaining locations: ['rankMax','D_optimal']
+
+        Returns
+        -------
+        None.
+
+        """
+     
+        
+        # load sensor placement results
+        p_eps_estimate = self.n-(self.p_zero_estimate+self.p_empty)
+        sensor_placement = SP.SensorPlacement(criterion, self.n, self.r, self.p_zero_estimate, p_eps_estimate,
+                                              self.p_empty, self.var_eps, self.var_zero)
+        
+        sensor_placement.initialize_problem(self.Psi,self.alpha_reg)
+        if criterion == 'rankMax':
+            sensor_placement.LoadLocations(self.rank_path, self.alpha_reg, self.var_zero)
+        elif criterion == 'D_optimal':
+            sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
+        
+        # get solution for specific number of refst in the network
+        sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
+        sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
+        print(f'rankMax chosen locations for epsilon {self.var_zero} sigma {self.var_eps}\n{sensor_placement.locations}')
+        
+        # check if solution exists
+        if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
+            print(f'No solution found for {self.solving_algorithm} with {self.p_zero_estimate} reference stations\n')
+            self.mse_empty_analytical = np.inf
+            self.mse_lcs_analytical = np.inf
+            return
+        
+        # get theta matrices
+        sensor_placement.C_matrix()
+        Theta_lcs = sensor_placement.C[0]@self.Psi
+        Theta_refst = sensor_placement.C[1]@self.Psi
+        Theta_empty = sensor_placement.C[2]@self.Psi
+        
+        # get estimated regressor covariance matrix
+        if self.var_zero!=0.0:
+            sensor_placement.covariance_matrix_GLS(self.Psi)
+        else:
+            sensor_placement.covariance_matrix_limit(self.Psi)
+        
+        # compute covariance estimated residuals
+        cov_lcs = Theta_lcs@sensor_placement.Cov@Theta_lcs.T
+        cov_empty = Theta_empty@sensor_placement.Cov@Theta_lcs.T
+        
+        self.mse_empty_analytical = np.trace(cov_empty)
+        self.mse_lcs_analytical = np.trace(cov_lcs)
+        
+        
+        
     
     
 # =============================================================================

@@ -205,7 +205,51 @@ class SensorPlacement:
         self.h_zero = h_zero
         self.problem = problem
         
-   
+    def Liu_placement_uncorr(self,Psi):
+        """
+        Liu-based sensor placement for weakly-correlated noise sensors
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+
+        Returns
+        -------
+        None.
+
+        """
+        R = np.identity(self.n)
+        diag = np.concatenate((np.repeat(self.var_zero**-1,self.p_zero),
+                               np.repeat(self.var_eps**-1,self.p_eps),
+                               np.repeat(0,self.p_empty)))
+        np.fill_diagonal(R, diag)
+        h = cp.Variable(shape=self.n,value = np.zeros(self.n))
+        H = cp.Variable(shape=(self.n,self.n),value=np.zeros((self.n,self.n)))
+        
+        F_mat = Psi.T@(cp.multiply(H, R))@Psi
+        
+        Z = cp.Variable(shape=(self.r,self.r))
+        Ir = np.identity(self.r)
+        M = cp.bmat([F_mat,Ir],[Ir,Z])
+        
+        objective = cp.trace(Z)
+        
+        
+        constraints = [M >= 0,
+                       cp.trace(H)<= self.p_zero + self.p_eps,
+                       cp.diag(H) == h,
+                       cp.bmat([ [H,h[:,None]],[h[:,None].T,np.ones((1,1))] ] )>= 0]
+        
+        
+        problem = cp.Problem(cp.Minimize(objective),constraints)
+        if not problem.is_dcp():
+            print('Problem not dcp\nCheck constraints and objective function')
+        self.problem = problem
+        self.h = h
+      
+       
+       
         
     
     def check_consistency(self):
@@ -249,6 +293,9 @@ class SensorPlacement:
         
         elif self.algorithm == 'D_optimal':
             self.DOptimal_placement(Psi)
+            
+        elif self.algorithm == 'Dopt-Liu':
+            self.Liu_placement_uncorr(Psi)
             
         else:
             print(f'Sensor placement algorithm {self.algorithm} not implemented yet')
@@ -499,6 +546,8 @@ class SensorPlacement:
         C_refst = self.C[1]
         Theta_lcs = C_lcs@Psi
         Theta_refst = C_refst@Psi
+        
+        #Cov = np.linalg.pinv( (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs )
         
         self.Cov = np.linalg.pinv( (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs )
                 
