@@ -1,0 +1,6 @@
+Validation results
+num_ref_st	alpha
+10	-1e0
+20	-1e0
+30	-1e2
+40	-1e0
