@@ -293,6 +293,226 @@ class PlacementSolutions():
                 
         print(f'Solver failed for {count} iterations with variances ratio {var_zero}')
         
+class EstimationPhase():
+    def __init__(self,n,p_zero_range,p_empty,r,num_random_placements,Dopt_path,rank_path,alphas,var_eps,save_path):
+        self.n = n
+        self.n_refst_range = p_zero_range
+        self.n_unmonitored = p_empty
+        self.sparsity = r
+        self.num_random_placements = num_random_placements
+        self.Dopt_path = Dopt_path
+        self.rank_path = rank_path
+        self.alphas = alphas
+        self.var_lcs = var_eps
+        self.save_path = save_path
+        
+    def compute_analytical_errors(self,dataset,save_results=False):
+        """
+        Compute analytical RMSE from trace covariance matrix for multiple number of reference stations in the network and 
+        different variances ratio between refst and LCSs.
+        
+        Given a number of reference stations (and LCSs) and variances ratio:
+            1) Locations are loaded for both criteria
+            2) regressor and measurement covariance matrices are computed and the metric measured
+            3) The results are stored for both criteria and at different locations.
+
+        Parameters
+        ----------
+        dataset : DataSet object
+            original dataset with measurements
+        save_results : boolean
+            save generated dictionaries
+
+        Returns
+        -------
+        None.
+
+        """
+        input('Compute analytical RMSE using covariance matrices.\nPress Enter to continue ...')
+        # project dataset onto subspace so that data is exactly sparse in a basis
+        lowrank_basis = LRB.LowRankBasis(dataset.ds_train,self.sparsity)
+        lowrank_basis.snapshots_matrix()
+        lowrank_basis.low_rank_decomposition(normalize=True)
+        dataset.project_basis(lowrank_basis.Psi)
+        
+        variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
+        
+        self.dict_rmse_refst_Dopt = {el:0 for el in self.n_refst_range}
+        self.dict_rmse_refst_rank = {el:0 for el in self.n_refst_range}
+        
+        for n_refst in self.n_refst_range:
+            alpha_reg = self.alphas[n_refst]
+            
+            dict_Dopt_var = {el:np.inf for el in variances}
+            dict_rankMax_var = {el:np.inf for el in variances}
+            for var in variances:
+                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=0).copy()
+                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected,var, seed=0).copy()
+                ds_real_test = dataset.ds_test_projected.copy()
+                
+                # estimate using those generated sensors measurements
+                
+                estimation_Dopt = Estimation.Estimation(self.n, self.sparsity, self.n_unmonitored, 
+                                                        n_refst, self.var_lcs, var, 
+                                                        self.num_random_placements, alpha_reg,
+                                                        ds_lcs_test, ds_refst_test, ds_real_test,
+                                                        lowrank_basis.Psi, self.Dopt_path, self.rank_path)
+                
+                estimation_rankMax = Estimation.Estimation(self.n, self.sparsity, self.n_unmonitored, 
+                                                        n_refst, self.var_lcs, var, 
+                                                        self.num_random_placements, alpha_reg,
+                                                        ds_lcs_test, ds_refst_test, ds_real_test,
+                                                        lowrank_basis.Psi, self.Dopt_path, self.rank_path)
+                if var!= 0:
+                
+                    estimation_Dopt.analytical_estimation(criterion='D_optimal')
+                    dict_Dopt_var[var] = [estimation_Dopt.rmse_analytical_full,estimation_Dopt.rmse_analytical_refst,estimation_Dopt.rmse_analytical_lcs,estimation_Dopt.rmse_analytical_unmonitored]
+                    estimation_rankMax.analytical_estimation(criterion='rankMax')
+                    dict_rankMax_var[var] = [estimation_rankMax.rmse_analytical_full,estimation_rankMax.rmse_analytical_refst,estimation_rankMax.rmse_analytical_lcs,estimation_rankMax.rmse_analytical_unmonitored]
+                    
+                else:
+                    dict_Dopt_var[var] = [np.inf,np.inf,np.inf,np.inf]
+                    estimation_rankMax.analytical_estimation(criterion='rankMax')
+                    dict_rankMax_var[var] = [estimation_rankMax.rmse_analytical_full,estimation_rankMax.rmse_analytical_refst,estimation_rankMax.rmse_analytical_lcs,estimation_rankMax.rmse_analytical_unmonitored]
+                
+            self.dict_rmse_refst_Dopt[n_refst] = pd.DataFrame(dict_Dopt_var,index=['Full','RefSt','LCS','Unmonitored'],columns=variances).T
+            self.dict_rmse_refst_rank[n_refst] = pd.DataFrame(dict_rankMax_var,index=['Full','RefSt','LCS','Unmonitored'],columns=variances).T
+        
+        if save_results:
+            fname = f'{self.save_path}RMSE_analytical_Doptimal.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(self.dict_rmse_refst_Dopt,f)
+            
+            fname = f'{self.save_path}RMSE_analytical_rankMax.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(self.dict_rmse_refst_rank,f)
+               
+            print(f'results saved in {self.save_path}')
+            
+            
+        
+    def compute_measurements_errors(self,dataset,num_refst=10,save_results=False):
+        """
+        Compute RMSE between real dataset and estimations using network configurationobtained with specific criterion.
+        
+        Given a certain variances ratio and criterion solution:
+        1) The original dataset is perturbated to generate refst and LCS measurements. The perturbation is for a specific seed
+        2) The criterion locations are loaded and estimated regressor computed
+        3) The estimated measurements are computed and rmse calculated
+        4) The output differentiates between location status: monitored by refst, monitored by LCS or unmonitored
+        5) The process is repeated for new dataset measurements (seed perturbation).
+        6) The process is repeated for different variances ratio.
+
+        Parameters
+        ----------
+        dataset : dataSet object
+            dataset with actual measurements
+            
+        num_refst : int, optional
+            Number of reference stations. The default is 10.
+        save_results : bool, optional
+            save generated dictionaries. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
+        # dataset used for estimation and number of reference stations in the network
+        
+        print(f'Estimation on testing set dataset {dataset_source}.\npollutant {pollutant}.\n Placing {num_refst} reference stations.\nComparing Doptimal solutions with rankMax solutions using GLS estimations.')
+        input('Press Enter to continue ...')
+        
+        lowrank_basis = LRB.LowRankBasis(dataset.ds_train,self.sparsity)
+        lowrank_basis.snapshots_matrix()
+        lowrank_basis.low_rank_decomposition(normalize=True)
+        dataset.project_basis(lowrank_basis.Psi)
+        
+        
+        alpha_reg = self.alphas[num_refst]
+        
+        variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
+        seeds = np.arange(0,1e1,1)
+        
+        # dictionaries for saving results (3 methods)
+        dict_random_var = {el:np.inf for el in variances}
+        dict_Dopt_var = {el:np.inf for el in variances}
+        dict_rankMax_var = {el:np.inf for el in variances}
+        
+        
+        for var in variances: # certain variances ratio
+            
+            dict_rmse_random = {el:np.inf for el in seeds}
+            dict_rmse_Dopt = {el:np.inf for el in seeds}
+            dict_rmse_rankMax = {el:np.inf for el in seeds}
+            
+            for s in seeds: # certain seed for perturbating
+                
+                # perturbate dataset to generate LCSs(variance var_eps) and ref.st.(variance var_zero). repeat for many seeds
+                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, self.var_lcs, seed=int(s)).copy()
+                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected,var, seed=int(s)).copy()
+                ds_real_test = dataset.ds_test_projected.copy()
+                
+                # estimate using those generated sensors measurements
+                estimation_test = Estimation.Estimation(self.n, self.sparsity,
+                                                        self.n_unmonitored, num_refst,
+                                                        self.var_lcs, var, 
+                                                        self.num_random_placements, alpha_reg,
+                                                        ds_lcs_test, ds_refst_test, ds_real_test,lowrank_basis.Psi, 
+                                                        self.Dopt_path,self.rank_path)
+            
+                # case variance ref_st is not zero
+                if var!=0:
+                    estimation_test.random_placement_estimation(self.rank_path)
+                    estimation_test.Dopt_placement_estimation()
+                    estimation_test.rankMax_placement_estimation()
+                    
+                    dict_rmse_random[s] = [estimation_test.rmse_random_full,estimation_test.rmse_random_refst,estimation_test.rmse_random_lcs,estimation_test.rmse_random_unmonitored] 
+                    dict_rmse_Dopt[s] = [estimation_test.rmse_Dopt_full,estimation_test.rmse_Dopt_refst,estimation_test.rmse_Dopt_lcs,estimation_test.rmse_Dopt_unmonitored]
+                    dict_rmse_rankMax[s] = [estimation_test.rmse_rankMax_full,estimation_test.rmse_rankMax_refst,estimation_test.rmse_rankMax_lcs,estimation_test.rmse_rankMax_unmonitored]
+                    
+                # case variance ref_st == 0
+                else:
+                    estimation_test.random_placement_estimation_limit(rank_path)
+                    estimation_test.rankMax_placement_estimation_limit()
+                    
+                    dict_rmse_random[s] = [estimation_test.rmse_random_full,estimation_test.rmse_random_refst,estimation_test.rmse_random_lcs,estimation_test.rmse_random_unmonitored] 
+                    dict_rmse_Dopt[s] = [np.inf,np.inf,np.inf,np.inf]
+                    dict_rmse_rankMax[s] = [estimation_test.rmse_rankMax_full,estimation_test.rmse_rankMax_refst,estimation_test.rmse_rankMax_lcs,estimation_test.rmse_rankMax_unmonitored]
+                    
+                    
+            # sort seeds iterations as dataframe and store it for the specific variances ratio
+            dict_random_var[var] = pd.DataFrame(dict_rmse_random,index=['Full','RefSt','LCS','Unmonitored']).T
+            dict_Dopt_var[var] = pd.DataFrame(dict_rmse_Dopt,index=['Full','RefSt','LCS','Unmonitored']).T
+            dict_rankMax_var[var] = pd.DataFrame(dict_rmse_rankMax,index=['Full','RefSt','LCS','Unmonitored']).T
+            
+        
+        if save_results:
+            fname = f'{self.save_path}RMSE_vs_variances_Random_{num_refst}RefSt.pkl'
+            with open(fname,'wb') as f:
+                pickle.dump(dict_random_var,f)
+        
+            fname = f'{self.save_path}RMSE_vs_variances_Dopt_{num_refst}RefSt.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(dict_Dopt_var,f)
+            
+            fname = f'{self.save_path}RMSE_vs_variances_rankMax_{num_refst}RefSt.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(dict_rankMax_var,f)
+            
+            print(f'results saved in {self.save_path}')
+            
+                
+        
+        
+        
+    
+        
+        
+    
+        
+    
+        
 #%%
 
 if __name__ == '__main__':
@@ -392,42 +612,42 @@ if __name__ == '__main__':
         for var in variances:
             placement_solutions.compute_solver_failures(r,p_empty,n,var)
       
-        # weights histograms and discrete conversion
-        plots.plot_weights_evolution(Dopt_path,rank_path,r,n,p_empty,solving_algorithm,p_zero_plot,alpha_plot)
+        # # weights histograms and discrete conversion
+        # plots.plot_weights_evolution(Dopt_path,rank_path,r,n,p_empty,solving_algorithm,p_zero_plot,alpha_plot)
         
-        plots.plot_locations_evolution(Dopt_path,rank_path,r,n,p_empty,p_zero_plot,alpha_plot,save_fig=False)
-        
-        
-        plots.plot_locations_rankMax_alpha(rank_path,r,n,p_empty,p_zero_plot,save_fig=False)
+        # plots.plot_locations_evolution(Dopt_path,rank_path,r,n,p_empty,p_zero_plot,alpha_plot,save_fig=False)
         
         
-        # compare shared locations between different Doptimal solutions
-        df_logdet_convergence,df_logdet_convergence_convex = placement_solutions.compare_logdet_convergence(Dopt_path,dataset.ds_train,
-                                                                               r,n,p_empty,p_zero_plot,var_eps,alpha_reg)
+        # plots.plot_locations_rankMax_alpha(rank_path,r,n,p_empty,p_zero_plot,save_fig=False)
         
-        df_comparison_empty = placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,    
-                                                                                 r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
-                                                                                 locations_to_compare='empty')
-        df_comparison_refst = placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,
-                                                                                 r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
-                                                                                 locations_to_compare='RefSt')
-        df_comparison_lcs= placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,
-                                                                              r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
-                                                                              locations_to_compare='LCSs')    
         
-        # compare similarities between rankMax distribution and different Dopt solutions
+        # # compare shared locations between different Doptimal solutions
+        # df_logdet_convergence,df_logdet_convergence_convex = placement_solutions.compare_logdet_convergence(Dopt_path,dataset.ds_train,
+        #                                                                        r,n,p_empty,p_zero_plot,var_eps,alpha_reg)
         
-        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
-                                                              alpha_plot, r, p_zero_plot, p_empty, 
-                                                              locations_to_compare='empty')
+        # df_comparison_empty = placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,    
+        #                                                                          r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
+        #                                                                          locations_to_compare='empty')
+        # df_comparison_refst = placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,
+        #                                                                          r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
+        #                                                                          locations_to_compare='RefSt')
+        # df_comparison_lcs= placement_solutions.compare_similarities_locations(Dopt_path,dataset.ds_train,
+        #                                                                       r,n,p_empty,p_zero_plot,var_eps,alpha_plot,
+        #                                                                       locations_to_compare='LCSs')    
         
-        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
-                                                              alpha_plot, r, p_zero_plot, p_empty, 
-                                                              locations_to_compare='LCSs')
+        # # compare similarities between rankMax distribution and different Dopt solutions
         
-        placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
-                                                              alpha_plot, r, p_zero_plot, p_empty, 
-                                                              locations_to_compare='RefSt')
+        # placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+        #                                                       alpha_plot, r, p_zero_plot, p_empty, 
+        #                                                       locations_to_compare='empty')
+        
+        # placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+        #                                                       alpha_plot, r, p_zero_plot, p_empty, 
+        #                                                       locations_to_compare='LCSs')
+        
+        # placement_solutions.compare_similarities_rankMax_Dopt(Dopt_path, rank_path,
+        #                                                       alpha_plot, r, p_zero_plot, p_empty, 
+        #                                                       locations_to_compare='RefSt')
       
         
         
@@ -476,7 +696,7 @@ if __name__ == '__main__':
             print(f'Regularization for alpha: {alpha_reg}')
             estimation_train = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var_zero, 
                                                      num_random_placements, alpha_reg,
-                                                     solving_algorithm, placement_metric, 
+                                                     solving_algorithm, 
                                                      ds_lcs_train, ds_refst_train, ds_real_train, 
                                                      lowrank_basis.Psi, Dopt_path, rank_path, locations_to_estimate)
             
@@ -487,7 +707,7 @@ if __name__ == '__main__':
             
             estimation_val = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var_zero, 
                                                      num_random_placements, alpha_reg,
-                                                     solving_algorithm, placement_metric, 
+                                                     solving_algorithm, 
                                                      ds_lcs_val, ds_refst_val, ds_real_val, 
                                                      lowrank_basis.Psi, Dopt_path, rank_path, locations_to_estimate)
             
@@ -544,98 +764,28 @@ if __name__ == '__main__':
         else:
             Dopt_path = results_path+'Taiwan/TrainingSet_results/Doptimal/' if pollutant == 'O3' else results_path+'Taiwan_NO2/TrainingSet_results/Doptimal/'
             rank_path = results_path+'Taiwan/TrainingSet_results/rankMax/' if pollutant == 'O3' else results_path+'Taiwan_NO2/TrainingSet_results/rankMax/'
-            p_zero_range_validated = [10,20,30,40]
-            alphas_range = [1e-2,1e1,-1e1,-1e-2] if pollutant == 'O3' else [-1e0,-1e0,-1e2,-1e0]
+            p_zero_range_validated = [10,20,25,30,40]
+            alphas_range = [1e-2,1e1,-1e-1,-1e1,-1e-2] if pollutant == 'O3' else [-1e0,-1e0,-1e0,-1e2,-1e0]
             alphas = {el:a for el,a in zip(p_zero_range_validated,alphas_range)}
         
-        # set of validated number of reference stations and respective alphas for rankMax criterion (on whole network)
+        # dataset used for estimation and number of reference stations in the network
+        estimation_phase = EstimationPhase(n, p_zero_range_validated, p_empty,
+                                           r, num_random_placements,
+                                           Dopt_path, rank_path, 
+                                           alphas, var_eps, results_path)
         
-        lowrank_basis = LRB.LowRankBasis(dataset.ds_train,r)
-        lowrank_basis.snapshots_matrix()
-        lowrank_basis.low_rank_decomposition(normalize=True)
-        dataset.project_basis(lowrank_basis.Psi)
+        print(f'Estimation on testing set dataset {dataset_source}.\npollutant {pollutant}. ')
         
-        p_zero_estimate = 10
-        alpha_reg = alphas[p_zero_estimate]
-        locations_to_estimate='Empty' # choose one from: ['All','RefSt','LCSs','Empty']
-        
-        variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
-        seeds = np.arange(0,1e2,1)
-        
-        
-        print(f'Estimation on testing set dataset {dataset_source}.\npollutant {pollutant}.\n Placing {p_zero_estimate} reference stations.\nComparing Doptimal solutions with rankMax solutions using GLS estimations.')
-        input('Press Enter to continue ...')
-        
-        dict_random_var = {el:np.inf for el in variances}
-        dict_Dopt_var = {el:np.inf for el in variances}
-        dict_rankMax_var = {el:np.inf for el in variances}
-        
-        for var in variances: # certain variances ratio
-            
-            dict_rmse_random = {el:np.inf for el in seeds}
-            dict_rmse_Dopt = {el:np.inf for el in seeds}
-            dict_rmse_rankMax = {el:np.inf for el in seeds}
-            
-            for s in seeds: # certain seed for perturbating
-                
-                # perturbate dataset to generate LCSs(variance var_eps) and ref.st.(variance var_zero). repeated for many seeds
-                ds_lcs_test = dataset.perturbate_signal(dataset.ds_test_projected, var_eps, seed=int(s)).copy()
-                ds_refst_test = dataset.perturbate_signal(dataset.ds_test_projected,var, seed=int(s)).copy()
-                ds_real_test = dataset.ds_test_projected.copy()
-                
-                # estimate using those generated sensors measurements
-                estimation_test = Estimation.Estimation(n, r, p_empty, p_zero_estimate, var_eps, var, 
-                                                         num_random_placements, alpha_reg,
-                                                         solving_algorithm, placement_metric, 
-                                                         ds_lcs_test, ds_refst_test, ds_real_test, 
-                                                         lowrank_basis.Psi, Dopt_path, rank_path)
-            
-                # case variance ref_st is not zero
-                if var!=0:
-                    estimation_test.random_placement_estimation(rank_path)
-                    estimation_test.Dopt_placement_estimation()
-                    #estimation_test.Dopt_placement_convergene(var_orig=1e0)
-                    estimation_test.rankMax_placement_estimation()
-                    
-                    dict_rmse_random[s] = [estimation_test.rmse_random_full,estimation_test.rmse_random_refst,estimation_test.rmse_random_lcs,estimation_test.rmse_random_unmonitored] 
-                    dict_rmse_Dopt[s] = [estimation_test.rmse_Dopt_full,estimation_test.rmse_Dopt_refst,estimation_test.rmse_Dopt_lcs,estimation_test.rmse_Dopt_unmonitored]
-                    dict_rmse_rankMax[s] = [estimation_test.rmse_rankMax_full,estimation_test.rmse_rankMax_refst,estimation_test.rmse_rankMax_lcs,estimation_test.rmse_rankMax_unmonitored]
-                    
-                # case variance ref_st == 0
-                else:
-                    estimation_test.random_placement_estimation_limit(rank_path)
-                    #estimation_test.Dopt_placement_convergene(var_orig=1e0)
-                    estimation_test.rankMax_placement_estimation_limit()
-                    
-                    dict_rmse_random[s] = [estimation_test.rmse_random_full,estimation_test.rmse_random_refst,estimation_test.rmse_random_lcs,estimation_test.rmse_random_unmonitored] 
-                    dict_rmse_Dopt[s] = [np.inf,np.inf,np.inf,np.inf]
-                    dict_rmse_rankMax[s] = [estimation_test.rmse_rankMax_full,estimation_test.rmse_rankMax_refst,estimation_test.rmse_rankMax_lcs,estimation_test.rmse_rankMax_unmonitored]
-                    
-                    
-            
-            dict_random_var[var] = pd.DataFrame(dict_rmse_random,index=['Full','RefSt','LCS','Unmonitored']).T
-            dict_Dopt_var[var] = pd.DataFrame(dict_rmse_Dopt,index=['Full','RefSt','LCS','Unmonitored']).T
-            dict_rankMax_var[var] = pd.DataFrame(dict_rmse_rankMax,index=['Full','RefSt','LCS','Unmonitored']).T
-            
-            
-                
-            
-        
-        
-        fname = f'{results_path}RMSE_vs_variances_Random_{p_zero_estimate}RefSt.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(dict_random_var,f)
-        
-        fname = f'{results_path}RMSE_vs_variances_Dopt_{p_zero_estimate}RefSt.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(dict_Dopt_var,f)
-        
-        fname = f'{results_path}RMSE_vs_variances_rankMax_{p_zero_estimate}RefSt.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(dict_rankMax_var,f)
-        
-           
+        estimation_phase.compute_analytical_errors(dataset,save_results=False)
         sys.exit()
+        
+        estimation_phase.compute_measurements_errors(dataset,num_refst=20,save_results=True)
+        sys.exit()
+        
+       
+        
+        
+       
         
       
     else:
