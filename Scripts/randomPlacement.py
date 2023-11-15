@@ -264,7 +264,7 @@ class randomPlacement():
             Covariances[idx] = Cov
         self.Covariances = Covariances
     
-    def beta_estimated(self,Psi,ds_lcs,ds_refst,var_eps,var_zero):
+    def beta_estimated_GLS(self,Psi,ds_lcs,ds_refst,var_eps,var_zero):
         """
         Compute GLS estimated regressor
 
@@ -353,36 +353,44 @@ class randomPlacement():
             
         
             
-    def estimation(self,Psi,ds_real,var_eps,var_zero,locations_to_estimate='All'):
-        self.rmse = {el:0 for el in np.arange(len(self.locations))}
-        self.mae = {el:0 for el in np.arange(len(self.locations))}
+    def estimation(self,Psi,ds_real):
+        self.rmse_full = {el:0 for el in np.arange(len(self.locations))}
+        self.rmse_unmonitored = {el:0 for el in np.arange(len(self.locations))}
+        self.rmse_refst = {el:0 for el in np.arange(len(self.locations))}
+        self.rmse_lcs = {el:0 for el in np.arange(len(self.locations))}
        
         for idx in self.locations.keys():
             locations = self.locations[idx]
-            if locations_to_estimate == 'empty':
-                l = 2
-                y_real = ds_real.loc[:,locations[2]]
-                C_estimation = self.C[idx][l]
-            elif locations_to_estimate == 'LCSs':
-                l = 0
-                y_real = ds_real.loc[:,locations[0]]
-                C_estimation = self.C[idx][l]
-            elif locations_to_estimate == 'RefSt':
-                l = 1
-                y_real = ds_real.loc[:,locations[1]]
-                C_estimation = self.C[idx][l]
-            else:
-                y_real = ds_real
-                C_estimation = np.identity(ds_real.shape[1])
-                
+            y_real = ds_real
             
-            # format tabular dataset
-            y_hat = C_estimation@Psi@self.beta_hat[idx]
+            # estimation whole network
+            y_hat = Psi@self.beta_hat[idx]
             y_pred = y_hat.T
             y_pred.columns = y_real.columns
+            
+            # estimate error in whole network
+            #self.rmse_full[idx] = np.sqrt(mean_squared_error(y_real, y_pred))/self.n
+            self.rmse_full[idx] = np.median([np.sqrt(mean_squared_error(y_real.loc[:,i],y_pred.loc[:,i])) for i in y_real.columns])
+            
+            
+            # compute error in unmonitored locations
+            #self.rmse_unmonitored[idx] = np.sqrt(mean_squared_error(y_real.loc[:,locations[2]],y_pred.loc[:,locations[2]]))/self.p_empty
+            self.rmse_unmonitored[idx] = np.median([np.sqrt(mean_squared_error(y_real.loc[:,locations[2]].loc[:,i],y_pred.loc[:,locations[2]].loc[:,i])) for i in locations[2]])
+            
+            
+            # estimate error in ref st locations
+            #self.rmse_refst[idx] = np.sqrt(mean_squared_error(y_real.loc[:,locations[1]],y_pred.loc[:,locations[1]]))/self.p_zero
+            self.rmse_refst[idx] = np.median([np.sqrt(mean_squared_error(y_real.loc[:,locations[1]].loc[:,i],y_pred.loc[:,locations[1]].loc[:,i])) for i in locations[1]])
+            
+            # estimate error in LCSs locations
+            #self.rmse_lcs[idx] = np.sqrt(mean_squared_error(y_real.loc[:,locations[0]],y_pred.loc[:,locations[0]]))/self.p_eps
+            self.rmse_lcs[idx] = np.median([np.sqrt(mean_squared_error(y_real.loc[:,locations[0]].loc[:,i],y_pred.loc[:,locations[0]].loc[:,i])) for i in locations[0]])
+            
+            
                         
-            self.rmse[idx] = np.sqrt(mean_squared_error(y_real, y_pred))
-            self.mae[idx] = mean_absolute_error(y_real, y_pred)
+            
+            
+            
             
             
             

@@ -560,15 +560,22 @@ if __name__ == '__main__':
         locations_to_estimate='Empty' # choose one from: ['All','RefSt','LCSs','Empty']
         
         variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
-        seeds = np.arange(0,1e3,1)
+        seeds = np.arange(0,1e2,1)
         
         
         print(f'Estimation on testing set dataset {dataset_source}.\npollutant {pollutant}.\n Placing {p_zero_estimate} reference stations.\nComparing Doptimal solutions with rankMax solutions using GLS estimations.')
         input('Press Enter to continue ...')
         
-        dict_rmse_var = {el:np.inf for el in variances}
+        dict_random_var = {el:np.inf for el in variances}
+        dict_Dopt_var = {el:np.inf for el in variances}
+        dict_rankMax_var = {el:np.inf for el in variances}
+        
         for var in variances: # certain variances ratio
-            dict_rmse_seed = {el:np.inf for el in seeds}
+            
+            dict_rmse_random = {el:np.inf for el in seeds}
+            dict_rmse_Dopt = {el:np.inf for el in seeds}
+            dict_rmse_rankMax = {el:np.inf for el in seeds}
+            
             for s in seeds: # certain seed for perturbating
                 
                 # perturbate dataset to generate LCSs(variance var_eps) and ref.st.(variance var_zero). repeated for many seeds
@@ -581,7 +588,7 @@ if __name__ == '__main__':
                                                          num_random_placements, alpha_reg,
                                                          solving_algorithm, placement_metric, 
                                                          ds_lcs_test, ds_refst_test, ds_real_test, 
-                                                         lowrank_basis.Psi, Dopt_path, rank_path, locations_to_estimate)
+                                                         lowrank_basis.Psi, Dopt_path, rank_path)
             
                 # case variance ref_st is not zero
                 if var!=0:
@@ -589,23 +596,44 @@ if __name__ == '__main__':
                     estimation_test.Dopt_placement_estimation()
                     #estimation_test.Dopt_placement_convergene(var_orig=1e0)
                     estimation_test.rankMax_placement_estimation()
-                    dict_rmse_seed[s] = [estimation_test.rmse_ci_random[0],estimation_test.rmse_Dopt,estimation_test.rmse_rankMax]
+                    
+                    dict_rmse_random[s] = [estimation_test.rmse_random_full,estimation_test.rmse_random_refst,estimation_test.rmse_random_lcs,estimation_test.rmse_random_unmonitored] 
+                    dict_rmse_Dopt[s] = [estimation_test.rmse_Dopt_full,estimation_test.rmse_Dopt_refst,estimation_test.rmse_Dopt_lcs,estimation_test.rmse_Dopt_unmonitored]
+                    dict_rmse_rankMax[s] = [estimation_test.rmse_rankMax_full,estimation_test.rmse_rankMax_refst,estimation_test.rmse_rankMax_lcs,estimation_test.rmse_rankMax_unmonitored]
                     
                 # case variance ref_st == 0
                 else:
                     estimation_test.random_placement_estimation_limit(rank_path)
                     #estimation_test.Dopt_placement_convergene(var_orig=1e0)
                     estimation_test.rankMax_placement_estimation_limit()
-                    dict_rmse_seed[s] = [estimation_test.rmse_ci_random[0],np.inf,estimation_test.rmse_rankMax]
+                    
+                    dict_rmse_random[s] = [estimation_test.rmse_random_full,estimation_test.rmse_random_refst,estimation_test.rmse_random_lcs,estimation_test.rmse_random_unmonitored] 
+                    dict_rmse_Dopt[s] = [np.inf,np.inf,np.inf,np.inf]
+                    dict_rmse_rankMax[s] = [estimation_test.rmse_rankMax_full,estimation_test.rmse_rankMax_refst,estimation_test.rmse_rankMax_lcs,estimation_test.rmse_rankMax_unmonitored]
+                    
+                    
             
-            dict_rmse_var[var] = pd.DataFrame(dict_rmse_seed,index=['Random','Dopt','rankMax']).T
+            dict_random_var[var] = pd.DataFrame(dict_rmse_random,index=['Full','RefSt','LCS','Unmonitored']).T
+            dict_Dopt_var[var] = pd.DataFrame(dict_rmse_Dopt,index=['Full','RefSt','LCS','Unmonitored']).T
+            dict_rankMax_var[var] = pd.DataFrame(dict_rmse_rankMax,index=['Full','RefSt','LCS','Unmonitored']).T
+            
+            
                 
             
         
         
-        fname = f'{results_path}RMSE_vs_variances_{locations_to_estimate}_RandomDoptRankMax_{p_zero_estimate}RefSt.pkl'
+        fname = f'{results_path}RMSE_vs_variances_Random_{p_zero_estimate}RefSt.pkl'
         with open(fname,'wb') as f:
-           pickle.dump(dict_rmse_var,f)
+           pickle.dump(dict_random_var,f)
+        
+        fname = f'{results_path}RMSE_vs_variances_Dopt_{p_zero_estimate}RefSt.pkl'
+        with open(fname,'wb') as f:
+           pickle.dump(dict_Dopt_var,f)
+        
+        fname = f'{results_path}RMSE_vs_variances_rankMax_{p_zero_estimate}RefSt.pkl'
+        with open(fname,'wb') as f:
+           pickle.dump(dict_rankMax_var,f)
+        
            
         sys.exit()
         
