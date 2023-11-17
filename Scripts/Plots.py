@@ -6,6 +6,7 @@ Created on Wed Jul 12 12:58:29 2023
 @author: jparedes
 """
 import numpy as np
+import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pickle
@@ -21,6 +22,11 @@ def scientific_notation(x, ndp,show_prefix=False):
         return r'{m:s}\times 10^{{{e:d}}}'.format(m=m, e=int(e))
     else:
         return r'10^{{{e:d}}}'.format(m=m, e=int(e))
+    
+def find_exp(number) -> int:
+    base10 = math.log10(abs(number))
+    return abs(math.floor(base10))
+
 
 class Plots():
     def __init__(self,save_path,figx=3.5,figy=2.5,fs_title=10,fs_label=10,fs_ticks=10,fs_legend=10,marker_size=3,dpi=300,show_plots=False):
@@ -1227,33 +1233,138 @@ class Plots():
             fname = self.save_path+'RMSE_' if metric=='RMSE' else self.save_path+'MAE_'
             fig.savefig(fname+f'vs_num_stations_r{r}_sigmaZero{var_zero}_pEmpty{p_empty}.png',dpi=300,format='png')
 
-    def plot_rmse_vs_variances(self,rmse_path,p_zero,alpha_reg,locations_estimated='All',save_fig=False):
+
+    def plot_error_vs_variances(self,results_Dopt,results_rank,results_random,n_refst,alpha_reg,locations,save_fig=False):
+        """
+        Plot reconstruction error for 3 criteria: Dopt, rankMax and random
+
+        Parameters
+        ----------
+        results_Dopt : pandas dataframe
+            D-optimal results
+        results_rank : pandas dataframe
+            rankMax results
+        results_random : pandas dataframe
+            random placement results
+        n_refst : int
+            number of reference stations in the network
+        alpha_reg : float
+            regularization paramter for rankMax
+        locations : str
+            locations for which the error was computed
+        save_fig : bool, optional
+            save figure. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
+            
+        variances = [i for i in results_Dopt.index]
+        xrange = np.arange(1,len(variances)+1,1) 
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(xrange,
+                [i[0] for i in results_random.values],color='#b03a2e',label='Random placement')
+        ax.fill_between(xrange,y1=[i[1] for i in results_random.values],
+                        y2=[i[2] for i in results_random.values],color='#b03a2e',alpha=0.5)
+        
+        ax.plot(xrange,
+                results_Dopt.values,color='#1a5276',label='D-optimal')
+        ax.plot(xrange,
+                results_rank.values,color='orange',label=rf'rankMax $\alpha=$' r'${0:s}$'.format(scientific_notation(np.abs(alpha_reg), 1)))
+        
+        
+        ax.set_xlabel(r'$\epsilon^2/\sigma^2_m$')
+        ax.set_xticks(xrange)
+        ax.set_xticklabels(np.concatenate(([0],[r'${0:s}$'.format(scientific_notation(i, 1)) for i in variances][1:])))
+      
+        # ax.set_yticklabels([np.round(i,1) for i in ax.get_yticks()])
+        ax.set_ylabel(r'RMSE ($\mu$g$/m^3$)')
+        ax.set_ylim(0,100)
+       
+        ax.legend(loc='upper right',ncol=3)
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        if save_fig:
+            fname = f'{self.save_path}Testing_RMSE_variances_{n_refst}RefSt_{locations}.png'
+            fig.savefig(fname,dpi=300,format='png')
+    
+    def plot_rmse_vs_variances(self,test_path,p_zero_plot,alpha_reg,n,locations_to_estimate='All',normalize=True,save_fig=False):
+        """
+        Plot RMSE for both criteria: Dopt and rankMax.
+        Dopt is obtained for every variances ratio and the RMSe computed.
+        rankMax is solved for ratio = 0 and the configuration used for other variances ratios.
+        random placement added for comparison.
+        
+        Loaded dict key correponds to variances ratio.
+        For each key there are 4 entries: [[random_mean,random_min_ci,random_max_ci], : random placement confidence interval
+                                           Dopt, : Doptimal obtained for that variances ratio
+                                           Dopt_convergence, : using other var ratio (typically 1e0)
+                                           rankMax: rankmax distribution used for that variances ratio]
+
+        Parameters
+        ----------
+        rmse_path : str
+            path to files
+        p_zero : int
+            number of reference stations
+        alpha_reg : float
+            rankmax regularization parameter
+        locations_estimated : str, optional
+            Locations of the network used for computing RMSE. The default is 'All'.
+        save_fig : bool, optional
+            Save figure. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
+        
         # load results
-        fname = rmse_path+f'RMSE_vs_variances_{locations_estimated}_RandomDoptRankMax_{p_zero}RefSt.pkl'
+        fname = test_path+f'RMSE_vs_variances_{locations_to_estimate}_RandomDoptRankMax_{p_zero_plot}RefSt.pkl'
         with open(fname,'rb') as f:
             rmse_var = pickle.load(f)
+            
         print('Loaded file\n')
         for k in rmse_var.keys():
             print(f'{k}: {rmse_var[k]}')
         
+        if normalize:
+            rmse_random = {el:rmse_var[el][0]/n for el in rmse_var.keys()}
+            rmse_Dopt = {el:rmse_var[el][1]/n for el in rmse_var.keys()}
+            rmse_rankMax = {el:rmse_var[el][3]/n for el in rmse_var.keys()}
+        else:
+            rmse_random = {el:rmse_var[el][0] for el in rmse_var.keys()}
+            rmse_Dopt = {el:rmse[el][1] for el in rmse.keys()}
+            rmse_rankMax = {el:rmse[el][3] for el in rmse.keys()}
+            
         xrange = np.arange(1,len(rmse_var)+1,1) 
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(xrange,
-                [i[0] for i in rmse_var.values()],color='#b03a2e',label='Best random')
+                [i[0] for i in rmse_random.values()],color='#b03a2e',label='Random placement')
+        ax.fill_between(xrange,y1=[i[1] for i in rmse_random.values()],
+                        y2=[i[2] for i in rmse_random.values()],color='#b03a2e',alpha=0.5)
+        
         ax.plot(xrange,
-                [i[1] for i in rmse_var.values()],color='#1a5276',label='D-optimal')
+                [i for i in rmse_Dopt.values()],color='#1a5276',label='D-optimal')
         ax.plot(xrange,
-                [i[2] for i in rmse_var.values()],color='orange',label=rf'rankMax $\alpha=$' r'${0:s}$'.format(scientific_notation(alpha_reg, 1)))
+                [i for i in rmse_rankMax.values()],color='orange',label=rf'rankMax $\alpha=$' r'${0:s}$'.format(scientific_notation(np.abs(alpha_reg), 1)))
         
         
         ax.set_xlabel(r'$\epsilon^2/\sigma^2_m$')
         ax.set_xticks(xrange)
         ax.set_xticklabels(np.concatenate(([0],[r'${0:s}$'.format(scientific_notation(i, 1)) for i in rmse_var.keys()][1:])))
             
-        ax.set_yticks(np.arange(0,120,20))
-        ax.set_ylim(0,100)
-        ax.set_yticklabels(ax.get_yticks())
+        if normalize:
+            ax.set_yticks(np.arange(0,1.1,0.1))
+            ax.set_ylim(0,1)
+        ax.set_yticklabels([np.round(i,1) for i in ax.get_yticks()])
         ax.set_ylabel(r'RMSE ($\mu$g$/m^3$)')
        # ax.set_title(f'{p_zero} reference stations')
         ax.legend(loc='upper right',ncol=3)
@@ -1261,13 +1372,49 @@ class Plots():
         fig.tight_layout()
         
         if save_fig:
-            fname = f'{self.save_path}Testing_RMSE_variances_{p_zero}RefSt.png'
+            fname = f'{self.save_path}Testing_RMSE_variances_{p_zero_plot}RefSt.png'
             fig.savefig(fname,dpi=300,format='png')
             
+    
+    # =============================================================================
+    # RANK EXHAUSTIVE NETWORK
+    # =============================================================================
+    
+    def plot_ranking_error(self,errors_sorted,rank_error,Dopt_error,var,save_fig):
+        
+        xrange = np.arange(1,len(errors_sorted)+1,1)
+        rank_loc = np.argwhere(errors_sorted == rank_error)[0][0]
+        try:
+            Dopt_loc = np.argwhere(errors_sorted == Dopt_error)[0][0]
+        except:
+            Dopt_loc = np.inf
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(xrange,errors_sorted,color='#b03a2e')
+        ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='orange',label=f'rankMax location {rank_loc}')
+        if Dopt_error != np.inf:
+            ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#1a5276',label='detMin location {Dopt_loc}')
+        ax.set_yscale('log')
+        ax.set_ylabel('RMSE')
+        
+        idx = [int(i) for i in np.logspace(0,6,7)]
+        ax.set_xticks(xrange[idx])
+        ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
+        ax.set_xscale('log')
+        ax.set_xlabel(r'$i$-th configuration')
+        ax.legend(loc='upper left',ncol=3)
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        
+        if save_fig:
+            fname = f'{self.save_path}RMSE_ranking_var{var}.png'
+            fig.savefig(fname,dpi=300,format='png')
             
         
-    
         
+        
+    
     # =============================================================================
     # WEIGHTS AND LOCATIONS DISTRIBUTION
     # =============================================================================
@@ -1915,3 +2062,5 @@ if __name__ == '__main__':
     # plots.plot_weights_distribution_comparison(f'{solutions_path}TrainingSet_results/{solving_algorithm}/',solving_algorithm,placement_metric,r,var_zero,p_empty,alpha_reg,p_zero,n=n,save_fig=False)    
     plots.plot_weights_distribution_comparison(f'{solutions_path}TrainingSet_results/D_optimal/','D_optimal',placement_metric,r,var_zero,p_empty,alpha_reg,p_zero,n=n,save_fig=False)    
         
+
+    

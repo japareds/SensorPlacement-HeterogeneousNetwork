@@ -435,7 +435,7 @@ class Estimation():
         
          
   
-    def analytical_estimation(self,criterion='rankMax'):
+    def analytical_estimation(self,criterion='rankMax',random_path=''):
         """
         Compute analytical MSE from sensors distributions in the network.
 
@@ -461,6 +461,20 @@ class Estimation():
             sensor_placement.LoadLocations(self.rank_path, self.alpha_reg, self.var_zero)
         elif criterion == 'D_optimal':
             sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
+        elif criterion == 'random':
+            fname = random_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
+            with open(fname,'rb') as f:
+                dict_random_locations = pickle.load(f)
+            
+            # random placement estimation
+            random_placement = RP.randomPlacement(self.p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
+            # obtain locations and covariance matrices
+            random_placement.locations = dict_random_locations[self.p_zero_estimate]
+            random_placement.C_matrix()
+            random_placement.covariance_matrix_GLS(self.Psi, self.var_eps, self.var_zero)
+            
+         
+            
         
         # get solution for specific number of refst in the network
         sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
@@ -470,7 +484,7 @@ class Estimation():
         # check if solution exists
         if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
             print(f'No solution found for {criterion} with {self.p_zero_estimate} reference stations\n')
-            self.rmse_analytical_full, self.rmse_analytical_refst, self.rmse_analytical_lcs, self.rmse_analytical_unmonitored = np.inf,np.inf,np.inf,np.inf
+            self.mse_analytical_full, self.mse_analytical_refst, self.mse_analytical_lcs, self.mse_analytical_unmonitored = np.inf,np.inf,np.inf,np.inf
             
             return
         
@@ -495,11 +509,113 @@ class Estimation():
         
         
         
-        self.rmse_analytical_full = np.trace(np.abs(cov_full))/self.n
-        self.rmse_analytical_refst = np.trace(cov_refst)/self.p_zero_estimate
-        self.rmse_analytical_lcs = np.trace(cov_lcs)/self.p_eps_estimate
-        self.rmse_analytical_unmonitored = np.trace(np.abs(cov_empty))/self.p_empty
+        self.mse_analytical_full = np.trace(np.abs(cov_full))/self.n
+        self.mse_analytical_refst = np.trace(cov_refst)/self.p_zero_estimate
+        self.mse_analytical_lcs = np.trace(cov_lcs)/self.p_eps_estimate
+        self.mse_analytical_unmonitored = np.trace(np.abs(cov_empty))/self.p_empty
        
+    def analytical_estimation_random(self,random_path):
+        """
+        Compute analytical MSE from random sensors distributions in the network.
+
+        Parameters
+        ----------
+        criterion : str
+            algorithm used for obtaining locations: ['rankMax','D_optimal']
+
+        Returns
+        -------
+        None.
+
+        """
+     
+        
+        # load random distributions
+        fname = random_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
+        with open(fname,'rb') as f:
+            dict_random_locations = pickle.load(f)
+        
+        # random placement estimation
+        random_placement = RP.randomPlacement(self.p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
+        # obtain locations and covariance matrices
+        random_placement.locations = dict_random_locations[self.p_zero_estimate]
+        random_placement.C_matrix()
+        # get regressor covariance matrices
+        if self.var_zero !=0:
+            random_placement.covariance_matrix_GLS(self.Psi, self.var_eps, self.var_zero)
+        else:
+            random_placement.covariance_matrix_limit(self.Psi, self.var_eps, self.r)
+            
+        self.mse_analytical_full_random = {el:[] for el in random_placement.Covariances}
+        self.mse_analytical_refst_random = {el:[] for el in random_placement.Covariances}
+        self.mse_analytical_lcs_random = {el:[] for el in random_placement.Covariances}
+        self.mse_analytical_unmonitored_random = {el:[] for el in random_placement.Covariances}
+        
+        for idx in random_placement.Covariances:
+        
+            # get theta matrices
+            Theta_lcs = random_placement.C[idx][0]@self.Psi
+            Theta_refst = random_placement.C[idx][1]@self.Psi
+            Theta_empty = random_placement.C[idx][2]@self.Psi
+        
+            # compute covariance estimated residuals
+            cov_full = self.Psi@random_placement.Covariances[idx]@self.Psi.T
+            cov_refst = Theta_refst@random_placement.Covariances[idx]@Theta_refst.T
+            cov_lcs = Theta_lcs@random_placement.Covariances[idx]@Theta_lcs.T
+            cov_empty = Theta_empty@random_placement.Covariances[idx]@Theta_empty.T
+            
+        
+        
+            self.mse_analytical_full_random[idx].append(np.trace(np.abs(cov_full))/self.n)
+            self.mse_analytical_refst_random[idx].append(np.trace(cov_refst)/self.p_zero_estimate)
+            self.mse_analytical_lcs_random[idx].append(np.trace(cov_lcs)/self.p_eps_estimate)
+            self.mse_analytical_unmonitored_random[idx].append(np.trace(np.abs(cov_empty))/self.p_empty)
+        
+        self.mse_analytical_full_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_full_random.values()],confidence=0.50) 
+        self.mse_analytical_refst_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_refst_random.values()],confidence=0.50) 
+        self.mse_analytical_lcs_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_lcs_random.values()],confidence=0.50) 
+        self.mse_analytical_unmonitored_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_unmonitored_random.values()],confidence=0.50) 
+          
+      
+    def analytical_estimation_exhaustive(self,exhaustive_placement):
+        
+        #get locations
+        random_placement = RP.randomPlacement(self.p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
+        random_placement.locations = exhaustive_placement.locations
+        
+        # get regressor covariance matrices
+        random_placement.C_matrix()
+        if self.var_zero !=0:
+            random_placement.covariance_matrix_GLS(self.Psi, self.var_eps, self.var_zero)
+        else:
+            random_placement.covariance_matrix_limit(self.Psi, self.var_eps, self.r)
+            
+        self.mse_analytical_full = {el:[] for el in random_placement.Covariances}
+        self.mse_analytical_refst = {el:[] for el in random_placement.Covariances}
+        self.mse_analytical_lcs = {el:[] for el in random_placement.Covariances}
+        self.mse_analytical_unmonitored = {el:[] for el in random_placement.Covariances}
+        
+        for idx in random_placement.Covariances:
+        
+            # get theta matrices
+            Theta_lcs = random_placement.C[idx][0]@self.Psi
+            Theta_refst = random_placement.C[idx][1]@self.Psi
+            Theta_empty = random_placement.C[idx][2]@self.Psi
+        
+            # compute covariance estimated residuals
+            cov_full = self.Psi@random_placement.Covariances[idx]@self.Psi.T
+            cov_refst = Theta_refst@random_placement.Covariances[idx]@Theta_refst.T
+            cov_lcs = Theta_lcs@random_placement.Covariances[idx]@Theta_lcs.T
+            cov_empty = Theta_empty@random_placement.Covariances[idx]@Theta_empty.T
+            
+        
+        
+            self.mse_analytical_full[idx].append(np.trace(np.abs(cov_full))/self.n)
+            self.mse_analytical_refst[idx].append(np.trace(cov_refst)/self.p_zero_estimate)
+            self.mse_analytical_lcs[idx].append(np.trace(cov_lcs)/self.p_eps_estimate)
+            self.mse_analytical_unmonitored[idx].append(np.trace(np.abs(cov_empty))/self.p_empty)
+        
+      
         
         
         
