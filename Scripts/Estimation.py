@@ -577,11 +577,11 @@ class Estimation():
         self.mse_analytical_unmonitored_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_unmonitored_random.values()],confidence=0.50) 
           
       
-    def analytical_estimation_exhaustive(self,exhaustive_placement):
+    def analytical_estimation_exhaustive(self,exhaustive_locations):
         
         #get locations
         random_placement = RP.randomPlacement(self.p_eps_estimate,self.p_zero_estimate,self.p_empty,self.n)
-        random_placement.locations = exhaustive_placement.locations
+        random_placement.locations = exhaustive_locations
         
         # get regressor covariance matrices
         random_placement.C_matrix()

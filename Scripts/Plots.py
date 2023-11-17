@@ -1393,7 +1393,7 @@ class Plots():
         ax.plot(xrange,errors_sorted,color='#b03a2e')
         ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='orange',label=f'rankMax location {rank_loc}')
         if Dopt_error != np.inf:
-            ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#1a5276',label='detMin location {Dopt_loc}')
+            ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#1a5276',label=f'detMin location {Dopt_loc}')
         ax.set_yscale('log')
         ax.set_ylabel('RMSE')
         
@@ -1402,13 +1402,13 @@ class Plots():
         ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
         ax.set_xscale('log')
         ax.set_xlabel(r'$i$-th configuration')
-        ax.legend(loc='upper left',ncol=3)
+        ax.legend(loc='upper left',ncol=1)
         ax.tick_params(axis='both', which='major')
         fig.tight_layout()
         
         
         if save_fig:
-            fname = f'{self.save_path}RMSE_ranking_var{var}.png'
+            fname = f'{self.save_path}RMSE_ranking_var{var:.1e}.png'
             fig.savefig(fname,dpi=300,format='png')
             
         

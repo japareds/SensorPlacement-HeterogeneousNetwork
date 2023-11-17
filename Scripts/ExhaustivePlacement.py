@@ -23,6 +23,12 @@ import Plots
 
 
 #%% locations algorithms
+
+def chunks(data, SIZE=10000):
+    it = iter(data)
+    for i in range(0, len(data), SIZE):
+        yield {k:data[k] for k in itertools.islice(it, SIZE)}
+        
 class ExhaustivePlacement():
     def __init__(self,n,n_refst,n_lcs,n_empty):
         self.n = n
@@ -345,37 +351,54 @@ def compute_analytical_errors_exhaustive(dataset,n_refst,var,save_results=False)
     lowrank_basis.low_rank_decomposition(normalize=True)
     dataset.project_basis(lowrank_basis.Psi)
     
-        
-        
-    estimation_exhaustive = Estimation.Estimation(n, s, 
-                                                  n_empty, n_refst, 
-                                                  1e0, var, 
-                                                  1, 1e0,
-                                                  [], [], [],
-                                                  lowrank_basis.Psi, exhaustive_path,exhaustive_path)
+    it = 0
+    num_el_chunk = 5000
+    for item in chunks(exhaustive_placement.locations, num_el_chunk): # split dict into chunk for memory
+        new_locs = {el:i for el,i in zip(range(num_el_chunk),item.values())}    
+        estimation_exhaustive = Estimation.Estimation(n, s, 
+                                                      n_empty, n_refst, 
+                                                      1e0, var, 
+                                                      1, 1e0,
+                                                      [], [], [],
+                                                      lowrank_basis.Psi, exhaustive_path,exhaustive_path)
+        estimation_exhaustive.analytical_estimation_exhaustive(new_locs)
+        it+=1
     
-    estimation_exhaustive.analytical_estimation_exhaustive(exhaustive_placement)
-        
-    
-    
-    if save_results:
-        fname = f'{results_path}MSE_analytical_exhaustive_Full_var{var:.1e}.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(estimation_exhaustive.mse_analytical_full,f)
-           
-        fname = f'{results_path}MSE_analytical_exhaustive_Unmonitored_var{var:.1e}.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(estimation_exhaustive.mse_analytical_unmonitored,f)
-        
-        fname = f'{results_path}MSE_analytical_exhaustive_RefSt_var{var:.1e}.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(estimation_exhaustive.mse_analytical_refst,f)
-        
-        fname = f'{results_path}MSE_analytical_exhaustive_LCS_var{var:.1e}.pkl'
-        with open(fname,'wb') as f:
-           pickle.dump(estimation_exhaustive.mse_analytical_lcs,f)
+        if save_results:
+            fname = f'{results_path}MSE_analytical_exhaustive_Full_var{var:.1e}_it{it}.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(estimation_exhaustive.mse_analytical_full,f)
+               
+            fname = f'{results_path}MSE_analytical_exhaustive_Unmonitored_var{var:.1e}_it{it}.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(estimation_exhaustive.mse_analytical_unmonitored,f)
+            
+            fname = f'{results_path}MSE_analytical_exhaustive_RefSt_var{var:.1e}_it{it}.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(estimation_exhaustive.mse_analytical_refst,f)
+            
+            fname = f'{results_path}MSE_analytical_exhaustive_LCS_var{var:.1e}_it{it}.pkl'
+            with open(fname,'wb') as f:
+               pickle.dump(estimation_exhaustive.mse_analytical_lcs,f)
         
     return estimation_exhaustive
+
+def join_exhaustive_placement_iterations(path_files,var,n_it,locations='Unmonitored'):
+    
+    values = np.array([])
+    for it in np.arange(1,n_it+1,1):
+        fname = path_files+f'MSE_analytical_exhaustive_{locations}_var{var:.1e}_it{it}.pkl'
+        with open(fname,'rb') as f:
+            unmonitored_mse_it = pickle.load(f)
+        values = np.append(values,[i[0] for i in unmonitored_mse_it.values()])
+    dict_values = {i:values[i] for i in range(len(values))}
+    fname = path_files+f'MSE_analytical_exhaustive_{locations}_var{var:.1e}.pkl'
+    with open(fname,'wb') as f:
+       pickle.dump(dict_values,f)
+    
+    
+    
+    
 
 def figure_exhaustive_criteria(errors_sorted,rank_error,Dopt_error,var,save_fig=False):
     plots = Plots.Plots(save_path=results_path,marker_size=1,
@@ -423,7 +446,12 @@ if __name__ == '__main__':
     estimate = True
     if estimate:
        #mse_Dopt,mse_rank = compute_analytical_errors_criteria(dataset,n_refst,alpha_reg=1e0,save_results=True)
-       estimation_exhaustive = compute_analytical_errors_exhaustive(dataset, n_refst, var=1e0)
+       var = 1e-1
+       estimation_exhaustive = compute_analytical_errors_exhaustive(dataset, n_refst, var,save_results=True)
+       join_exhaustive_placement_iterations(results_path,var,491,locations='Unmonitored')
+       join_exhaustive_placement_iterations(results_path,var,491,locations='Full')
+       join_exhaustive_placement_iterations(results_path,var,491,locations='RefSt')
+       join_exhaustive_placement_iterations(results_path,var,491,locations='LCS')
        
      
     # plot comparison criteria location in the exhaustive ranks
@@ -431,11 +459,15 @@ if __name__ == '__main__':
     if show_figures:
         # load exhaustive results
         loc = 'Unmonitored'
-        var = 0.0
+        var = 1e-1
         fname = exhaustive_path+f'MSE_analytical_exhaustive_{loc}_var{var:.1e}.pkl'
         with open(fname,'rb') as f:
             exhaustive_mse = pickle.load(f)
-        errors_sorted = np.sqrt(np.sort([i[0] for i in exhaustive_mse.values()]))
+        try:
+            errors_sorted = np.sqrt(np.sort([i[0] for i in exhaustive_mse.values()]))
+        except:
+            errors_sorted = np.sqrt(np.sort([i for i in exhaustive_mse.values()]))
+            
         # load criteria results
         
         fname = exhaustive_path+'MSE_analytical_rankMax.pkl'
