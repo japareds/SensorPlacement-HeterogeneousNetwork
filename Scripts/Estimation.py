@@ -457,7 +457,7 @@ class Estimation():
                                               self.p_empty, self.var_eps, self.var_zero)
         
         sensor_placement.initialize_problem(self.Psi,self.alpha_reg)
-        if criterion == 'rankMax':
+        if criterion == 'rankMax' or criterion == 'rankMax_FM':
             sensor_placement.LoadLocations(self.rank_path, self.alpha_reg, self.var_zero)
         elif criterion == 'D_optimal':
             sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)

@@ -27,7 +27,7 @@ def find_exp(number) -> int:
     base10 = math.log10(abs(number))
     return abs(math.floor(base10))
 
-
+#%%
 class Plots():
     def __init__(self,save_path,figx=3.5,figy=2.5,fs_title=10,fs_label=10,fs_ticks=10,fs_legend=10,marker_size=3,dpi=300,show_plots=False):
         self.figx = figx
@@ -1380,18 +1380,51 @@ class Plots():
     # RANK EXHAUSTIVE NETWORK
     # =============================================================================
     
-    def plot_ranking_error(self,errors_sorted,rank_error,Dopt_error,var,save_fig):
+    def plot_ranking_error(self,errors_sorted,rank_error,rankFM_error,Dopt_error,var,save_fig=False):
+        """
+        Plot RMSE ranked from lowest to highest considering ALL possible sensors distributions
+        Also shows the performance of three criteria:
+            1) Doptimal: logdet minimization
+            2) rankMax: RefSt matrix rank maximization
+            3) rankMax_FM: logdet minimization alongside with a fully-monitored rank maximization to distribution sensors
+
+        Parameters
+        ----------
+        errors_sorted : numpy array
+            RMSE for all possible configurations
+        rank_error : float
+            RMSE obtained using rankMax configuration
+        rankFM_error : float
+            RMSE obtained using rankMaxFM configuration
+        Dopt_error : float
+            RMSE obtained using Doptimal configuration
+        var : float
+            variance ratio between RefSt and LCS sensors. Used when computing RMSE
+        save_fig : bool, optional.
+            Save figure. Default is False
+
+        Returns
+        -------
+        None.
+
+        """
         
+        # show errors plotted
         xrange = np.arange(1,len(errors_sorted)+1,1)
         rank_loc = np.argwhere(errors_sorted == rank_error)[0][0]
+        rankFM_loc = np.argwhere(errors_sorted == rankFM_error)[0][0]
+        
         try:
             Dopt_loc = np.argwhere(errors_sorted == Dopt_error)[0][0]
         except:
             Dopt_loc = np.inf
+            
+            
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(xrange,errors_sorted,color='#b03a2e')
         ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='orange',label=f'rankMax location {rank_loc}')
+        ax.vlines(x=rankFM_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#d35400',label=f'Hybrid-FM location {rankFM_loc}')
         if Dopt_error != np.inf:
             ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#1a5276',label=f'detMin location {Dopt_loc}')
         ax.set_yscale('log')
@@ -1412,6 +1445,72 @@ class Plots():
             fig.savefig(fname,dpi=300,format='png')
             
         
+    def ranking_error_comparison(self,errors_sorted,errors_ranking_zero,rank_error,rankFM_error,Dopt_error,var,save_fig=False):
+        """
+        Plot RMSE ranked from lowest to highest considering ALL possible sensors distributions
+        Also shows the performance of three criteria:
+            1) Doptimal: logdet minimization
+            2) rankMax: RefSt matrix rank maximization
+            3) rankMax_FM: logdet minimization alongside with a fully-monitored rank maximization to distribution sensors
+
+        Parameters
+        ----------
+        errors_sorted : numpy array
+            RMSE for all possible configurations
+        rank_error : float
+            RMSE obtained using rankMax configuration
+        rankFM_error : float
+            RMSE obtained using rankMaxFM configuration
+        Dopt_error : float
+            RMSE obtained using Doptimal configuration
+        var : float
+            variance ratio between RefSt and LCS sensors. Used when computing RMSE
+        save_fig : bool, optional.
+            Save figure. Default is False
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        # show errors plotted
+        xrange = np.arange(1,len(errors_sorted)+1,1)
+        rank_loc = np.argwhere(errors_sorted == rank_error)[0][0]
+        rankFM_loc = np.argwhere(errors_sorted == rankFM_error)[0][0]
+        
+        try:
+            Dopt_loc = np.argwhere(errors_sorted == Dopt_error)[0][0]
+        except:
+            Dopt_loc = np.inf
+            
+            
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(xrange,errors_ranking_zero,color='#b03a2e',label=r'$\epsilon^2/\sigma^2=$'r'${0:s}$'.format(scientific_notation(var, 1)))
+        ax.plot(xrange,errors_sorted,color='k',label=r'$\epsilon^2/\sigma^2=0$')
+        
+        
+        ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='orange',label=f'rankMax location {rank_loc}')
+        ax.vlines(x=rankFM_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#d35400',label=f'Hybrid-FM location {rankFM_loc}')
+        if Dopt_error != np.inf:
+            ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#1a5276',label=f'detMin location {Dopt_loc}')
+        ax.set_yscale('log')
+        ax.set_ylabel('RMSE')
+        
+        idx = [int(i) for i in np.logspace(0,6,7)]
+        ax.set_xticks(xrange[idx])
+        ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
+        ax.set_xscale('log')
+        ax.set_xlabel(r'$i$-th configuration')
+        ax.legend(loc='upper left',ncol=1)
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        
+        if save_fig:
+            fname = f'{self.save_path}RMSE_ranking_var{var:.1e}.png'
+            fig.savefig(fname,dpi=300,format='png')
         
         
     

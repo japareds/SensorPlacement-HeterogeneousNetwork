@@ -199,7 +199,15 @@ def solve_sensor_placement(dataset,criterion='rankMax'):
             placement.placement_allStations()
             placement.save_results(results_path)
     
-def validation_alpha(dataset,n_refst):
+    elif criterion == 'rankMax_FM':
+        var_refst = 0
+        for alpha_reg in alphas:
+            placement = CW.Placement(n, n_empty, s, dataset.ds_train, criterion, 
+                                     var_lcs, var_refst, 1, alpha_reg)
+            placement.placement_allStations()
+            placement.save_results(results_path)
+    
+def validation_alpha(dataset,n_refst,criterion='rankMax'):
 
     lowrank_basis = LRB.LowRankBasis(dataset.ds_train,s)
     lowrank_basis.snapshots_matrix()
@@ -214,7 +222,7 @@ def validation_alpha(dataset,n_refst):
                                                 1, alpha_reg,
                                                 [], [],[],
                                                 lowrank_basis.Psi, '',exhaustive_path)
-        estimation_rankMax.analytical_estimation(criterion='rankMax')
+        estimation_rankMax.analytical_estimation(criterion)
         
         mse_alphas[alpha_reg] = estimation_rankMax.mse_analytical_full
         
@@ -253,8 +261,8 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
         
     dict_Dopt_var = {el:np.inf for el in variances}
     dict_rankMax_var = {el:np.inf for el in variances}
-    dict_ex_var = {el:np.inf for el in variances}
-        
+    dict_rankMaxFM_var = {el:np.inf for el in variances}
+    
     for var in variances:
         # estimate using those generated sensors measurements
         
@@ -270,54 +278,60 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
                                                 [], [], [],
                                                 lowrank_basis.Psi, exhaustive_path,exhaustive_path)
         
-        estimation_exhaustive = Estimation.Estimation(n, s, n_empty, 
+        estimation_rankMaxFM = Estimation.Estimation(n, s, n_empty, 
                                                 n_refst, 1e0, var, 
                                                 1, alpha_reg,
                                                 [], [], [],
                                                 lowrank_basis.Psi, exhaustive_path,exhaustive_path)
         
         
+       
+        
         if var!= 0:
         
             estimation_Dopt.analytical_estimation(criterion='D_optimal')
-            dict_Dopt_var[var] = [estimation_Dopt.mse_analytical_full,estimation_Dopt.mse_analytical_refst,estimation_Dopt.mse_analytical_lcs,estimation_Dopt.mse_analytical_unmonitored]
+            dict_Dopt_var[var] = [estimation_Dopt.mse_analytical_full,estimation_Dopt.mse_analytical_refst,
+                                  estimation_Dopt.mse_analytical_lcs,estimation_Dopt.mse_analytical_unmonitored]
             
             estimation_rankMax.analytical_estimation(criterion='rankMax')
-            dict_rankMax_var[var] = [estimation_rankMax.mse_analytical_full,estimation_rankMax.mse_analytical_refst,estimation_rankMax.mse_analytical_lcs,estimation_rankMax.mse_analytical_unmonitored]
+            dict_rankMax_var[var] = [estimation_rankMax.mse_analytical_full,estimation_rankMax.mse_analytical_refst,
+                                     estimation_rankMax.mse_analytical_lcs,estimation_rankMax.mse_analytical_unmonitored]
             
-            # estimation_exhaustive.analytical_estimation_exhaustive(exhaustive_placement)
-            # dict_ex_var[var] = [estimation_exhaustive.mse_analytical_full,estimation_exhaustive.mse_analytical_refst,
-            #                     estimation_exhaustive.mse_analytical_lcs,estimation_exhaustive.mse_analytical_unmonitored]
-            
+            estimation_rankMaxFM.analytical_estimation(criterion='rankMax_FM')
+            dict_rankMaxFM_var[var] = [estimation_rankMaxFM.mse_analytical_full,estimation_rankMaxFM.mse_analytical_refst,
+                                     estimation_rankMaxFM.mse_analytical_lcs,estimation_rankMaxFM.mse_analytical_unmonitored]
+              
         else:
             dict_Dopt_var[var] = [np.inf,np.inf,np.inf,np.inf]
             
             estimation_rankMax.analytical_estimation(criterion='rankMax')
-            dict_rankMax_var[var] = [estimation_rankMax.mse_analytical_full,estimation_rankMax.mse_analytical_refst,estimation_rankMax.mse_analytical_lcs,estimation_rankMax.mse_analytical_unmonitored]
-            
-            # estimation_exhaustive.analytical_estimation_exhaustive(exhaustive_placement)
-            # dict_ex_var[var] = [estimation_exhaustive.mse_analytical_full,estimation_exhaustive.mse_analytical_refst,
-            #                     estimation_exhaustive.mse_analytical_lcs,estimation_exhaustive.mse_analytical_unmonitored]
+            dict_rankMax_var[var] = [estimation_rankMax.mse_analytical_full,estimation_rankMax.mse_analytical_refst,
+                                     estimation_rankMax.mse_analytical_lcs,estimation_rankMax.mse_analytical_unmonitored]
+            estimation_rankMaxFM.analytical_estimation(criterion='rankMax_FM')
+            dict_rankMaxFM_var[var] = [estimation_rankMaxFM.mse_analytical_full,estimation_rankMaxFM.mse_analytical_refst,
+                                     estimation_rankMaxFM.mse_analytical_lcs,estimation_rankMaxFM.mse_analytical_unmonitored]
             
     mse_Dopt = pd.DataFrame(dict_Dopt_var,index=['Full','RefSt','LCS','Unmonitored'],columns=variances).T
     mse_rank = pd.DataFrame(dict_rankMax_var,index=['Full','RefSt','LCS','Unmonitored'],columns=variances).T
-    # mse_ex = pd.DataFrame(dict_ex_var,index=['Full','RefSt','LCS','Unmonitored'],columns=variances).T
+    mse_rankFM = pd.DataFrame(dict_rankMaxFM_var,index=['Full','RefSt','LCS','Unmonitored'],columns=variances).T
     
     
     if save_results:
-        fname = f'{results_path}MSE_analytical_Doptimal.pkl'
+        fname = f'{results_path}MSE_analytical_Doptimal_{n}nTot_{n_refst}RefSt.pkl'
         with open(fname,'wb') as f:
            pickle.dump(mse_Dopt,f)
         
-        fname = f'{results_path}MSE_analytical_rankMax.pkl'
+        fname = f'{results_path}MSE_analytical_rankMax_{n}nTot_{n_refst}RefSt.pkl'
         with open(fname,'wb') as f:
            pickle.dump(mse_rank,f)
            
-        # fname = f'{results_path}MSE_analytical_exhaustive.pkl'
-        # with open(fname,'wb') as f:
-        #    pickle.dump(mse_ex,f)
-          
-    return mse_Dopt,mse_rank
+        fname = f'{results_path}MSE_analytical_rankMaxFM_{n}nTot_{n_refst}RefSt.pkl'
+        with open(fname,'wb') as f:
+           pickle.dump(mse_rankFM,f)
+           
+           
+      
+    return mse_Dopt,mse_rank,mse_rankFM
         
 
 def compute_analytical_errors_exhaustive(dataset,n_refst,var,save_results=False):
@@ -396,16 +410,53 @@ def join_exhaustive_placement_iterations(path_files,var,n_it,locations='Unmonito
     with open(fname,'wb') as f:
        pickle.dump(dict_values,f)
     
+
+def load_error_results(loc,var,path):
+    # baseline result for comparison
+    fname = path+f'MSE_analytical_exhaustive_{loc}_var{var:.1e}.pkl'
+    with open(fname,'rb') as f:
+        exhaustive_mse = pickle.load(f)
+    # sort values and their repective index for variance == 0.0
+    try:
+        errors_sorted = np.sqrt(np.sort([i[0] for i in exhaustive_mse.values()]))
+        loc_sorted = np.argsort([i[0] for i in exhaustive_mse.values()])
+        
+    except:
+        errors_sorted = np.sqrt(np.sort([i for i in exhaustive_mse.values()]))
+        loc_sorted = np.argsort([i for i in exhaustive_mse.values()])
+       
+    # load criteria results
     
+    fname = path+f'MSE_analytical_rankMax_{n}nTot_{n_refst}RefSt.pkl'
+    with open(fname,'rb') as f:
+        rankMax_mse = pickle.load(f)
+    rankMax_error = np.sqrt(rankMax_mse.loc[var][loc])
+    
+    fname = path+f'MSE_analytical_rankMaxFM_{n}nTot_{n_refst}RefSt.pkl'
+    with open(fname,'rb') as f:
+        rankMaxFM_mse = pickle.load(f)
+    rankMaxFM_error = np.sqrt(rankMaxFM_mse.loc[var][loc])
+    
+    fname = path+f'MSE_analytical_Doptimal_{n}nTot_{n_refst}RefSt.pkl'
+    with open(fname,'rb') as f:
+        Dopt_mse = pickle.load(f)
+    Dopt_error = np.sqrt(Dopt_mse.loc[var][loc])
+    
+    print(f'Errors obtained for variances ratio {var:.1e}\n Global minimum: {errors_sorted.min()}\n\nDifferent criteria results\n Doptimal: {Dopt_error}\n rankMax: {rankMax_error}\n Hybrid rankMax-FM: {rankMaxFM_error}')
+    
+    return Dopt_error,rankMax_error,rankMaxFM_error, errors_sorted,loc_sorted
+       
+     
     
     
 
-def figure_exhaustive_criteria(errors_sorted,rank_error,Dopt_error,var,save_fig=False):
+def figure_exhaustive_criteria(errors_sorted,rank_error,rankFM_error,Dopt_error,var,save_fig=False):
     plots = Plots.Plots(save_path=results_path,marker_size=1,
                         fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                         show_plots=True)
     
-    plots.plot_ranking_error(errors_sorted, rank_error, Dopt_error, var,save_fig)
+    plots.plot_ranking_error(errors_sorted, rank_error,rankFM_error, Dopt_error, var,save_fig)
+    plots.ranking_error_comparison(errors_sorted, errors_ranking_zero, rank_error, rankFM_error, Dopt_error, var)
     
    
 
@@ -433,19 +484,22 @@ if __name__ == '__main__':
     # get reduced dataset
     dataset = load_dataset()
     
+    
     # solve convex sensor placement problem
     solve = False
     if solve:
-        solve_sensor_placement(dataset,criterion='rankMax')
+        solve_sensor_placement(dataset,criterion='rankMax_FM')
+        sys.exit()
     # validate alpha rankMax
     validate = False
     if validate:
-        mse_alphas = validation_alpha(dataset, n_refst)
+        mse_alphas = validation_alpha(dataset, n_refst,criterion='rankMax_FM')
+        sys.exit()
     
     # compute MSE using both criteria and exhaustive configurations forn given variance
-    estimate = True
+    estimate = False
     if estimate:
-       #mse_Dopt,mse_rank = compute_analytical_errors_criteria(dataset,n_refst,alpha_reg=1e0,save_results=True)
+       mse_Dopt,mse_rank,mse_rankFM = compute_analytical_errors_criteria(dataset,n_refst,alpha_reg=1e0,save_results=True)
        var = 1e-1
        estimation_exhaustive = compute_analytical_errors_exhaustive(dataset, n_refst, var,save_results=True)
        join_exhaustive_placement_iterations(results_path,var,491,locations='Unmonitored')
@@ -454,33 +508,27 @@ if __name__ == '__main__':
        join_exhaustive_placement_iterations(results_path,var,491,locations='LCS')
        
      
+    #%%
     # plot comparison criteria location in the exhaustive ranks
-    show_figures = False
+    show_figures = True
     if show_figures:
         # load exhaustive results
-        loc = 'Unmonitored'
-        var = 1e-1
+        loc = 'Unmonitored' # ['Full','RefSt','LCS','Unmonitored']
+        var = 0e0
+        Dopt_error_0,rankMax_error_0, rankMaxFM_error_0,errors_sorted_0,loc_sorted_0 = load_error_results(loc, var, exhaustive_path)
+        
+        var = 1e0
+        Dopt_error,rankMax_error, rankMaxFM_error,errors_sorted,_ = load_error_results(loc, var, exhaustive_path)
+        
+        # sort exhaustive results according to order given by ranking at var==0.0
         fname = exhaustive_path+f'MSE_analytical_exhaustive_{loc}_var{var:.1e}.pkl'
         with open(fname,'rb') as f:
             exhaustive_mse = pickle.load(f)
-        try:
-            errors_sorted = np.sqrt(np.sort([i[0] for i in exhaustive_mse.values()]))
-        except:
-            errors_sorted = np.sqrt(np.sort([i for i in exhaustive_mse.values()]))
-            
-        # load criteria results
         
-        fname = exhaustive_path+'MSE_analytical_rankMax.pkl'
-        with open(fname,'rb') as f:
-            rankMax_mse = pickle.load(f)
-        rankMax_error = np.sqrt(rankMax_mse.loc[var][loc])
+        errors_ranking_zero = np.array([np.sqrt(i) for i in exhaustive_mse.values()])[loc_sorted_0]
             
-        fname = exhaustive_path+'MSE_analytical_Doptimal.pkl'
-        with open(fname,'rb') as f:
-            Dopt_mse = pickle.load(f)
-        Dopt_error = np.sqrt(Dopt_mse.loc[var][loc])
         
-        figure_exhaustive_criteria(errors_sorted,rankMax_error,Dopt_error,var,save_fig=True)
+        figure_exhaustive_criteria(errors_sorted,rankMax_error,rankMaxFM_error,Dopt_error,var,save_fig=False)
         
         
         
