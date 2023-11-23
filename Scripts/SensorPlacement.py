@@ -498,8 +498,8 @@ class SensorPlacement:
         self.logdet_eps = np.log(np.linalg.det(Psi.T@np.diag(self.h_eps.value)@Psi))
         self.trace_zero = alpha*np.trace(Psi.T@np.diag(self.h_zero.value)@Psi)
     
-    def local_swapping(self,j,l):
-        old_cov = self.Cov.copy()
+    def local_swapping(self,num_swaps = 100):
+        pass
         
         
         
