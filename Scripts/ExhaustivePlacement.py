@@ -391,7 +391,7 @@ def solution_swap(dataset,s,var,solution_dist,n_swaps=100):
             
     
     
-def validation_alpha(dataset,n_refst,s,criterion='rankMax'):
+def validation_alpha(dataset,n_refst,s,n_empty,criterion='rankMax'):
     """
     Estimate MSE for different alpha values using rankMax solution.
     Using dataset ==  validation data set then select the alpha for the lowest MSE
@@ -402,6 +402,10 @@ def validation_alpha(dataset,n_refst,s,criterion='rankMax'):
         network measurements
     n_refst : int
         number of reference stations
+    s : int
+        signal sparsity level
+    n_emty : int
+        number of unmonitored locations in the network
     criterion : str, optional
         criteria for solving sensor placement problem. The default is 'rankMax'.
 
@@ -431,7 +435,7 @@ def validation_alpha(dataset,n_refst,s,criterion='rankMax'):
         
     return mse_alphas
 
-def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=False):
+def compute_analytical_errors_criteria(dataset,n_refst,n_empty,s,alpha_reg,save_results=False):
     """
     Compute analytical MSE from trace covariance matrix for a given number of reference stations/LCSs in the network and 
     iterated over different variances ratio between refst and LCSs.
@@ -445,6 +449,14 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
     ----------
     dataset : DataSet object
         original dataset with measurements
+    n_refst : int
+        number of RefSt
+    n_empty : int
+        number of unmonitored locations
+    s : int
+        signal sparsity level
+    alpha_reg : float
+        regularization parameter value for rankMax algorithm
     save_results : boolean
         save generated dictionaries
 
@@ -453,7 +465,7 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
     None.
 
     """
-    input('Compute analytical RMSE using covariance matrices.\nPress Enter to continue ...')
+    #input('Compute analytical RMSE using covariance matrices.\nPress Enter to continue ...')
     # project dataset onto subspace so that data is exactly sparse in a basis
     lowrank_basis = LRB.LowRankBasis(dataset.ds_train,s)
     lowrank_basis.snapshots_matrix()
@@ -467,6 +479,7 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
     dict_rankMaxFM_var = {el:np.inf for el in variances}
     
     for var in variances:
+        print(f'Computing estimation for variance: {var:.1e}')
         # estimate using those generated sensors measurements
         
         estimation_Dopt = Estimation.Estimation(n, s, n_empty, 
@@ -491,11 +504,12 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
        
         
         if var!= 0:
-        
+            print('D-optimal estimation')
             estimation_Dopt.analytical_estimation(criterion='D_optimal')
             dict_Dopt_var[var] = [estimation_Dopt.mse_analytical_full,estimation_Dopt.mse_analytical_refst,
                                   estimation_Dopt.mse_analytical_lcs,estimation_Dopt.mse_analytical_unmonitored]
             
+            print('RankMax estimation')
             estimation_rankMax.analytical_estimation(criterion='rankMax')
             dict_rankMax_var[var] = [estimation_rankMax.mse_analytical_full,estimation_rankMax.mse_analytical_refst,
                                      estimation_rankMax.mse_analytical_lcs,estimation_rankMax.mse_analytical_unmonitored]
@@ -505,8 +519,10 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
                                      estimation_rankMaxFM.mse_analytical_lcs,estimation_rankMaxFM.mse_analytical_unmonitored]
               
         else:
+            print('D-optimal estimation')
             dict_Dopt_var[var] = [np.inf,np.inf,np.inf,np.inf]
             
+            print('rankMax estimation')
             estimation_rankMax.analytical_estimation(criterion='rankMax')
             dict_rankMax_var[var] = [estimation_rankMax.mse_analytical_full,estimation_rankMax.mse_analytical_refst,
                                      estimation_rankMax.mse_analytical_lcs,estimation_rankMax.mse_analytical_unmonitored]
@@ -535,6 +551,77 @@ def compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=Fa
            
       
     return mse_Dopt,mse_rank,mse_rankFM
+
+
+def compute_analytical_errors_all_proportions(dataset,n,n_empty,s):
+    """
+    Computes MSE for all possible number of reference stations in the network of size n and sparsity s.
+    The station has n_empty unmonitored locations.
+    
+    The number of ref.st. goes from 0 to s-1
+    The rest of sensors are LCSs
+
+    Parameters
+    ----------
+    dataset : dataset object
+        dataset with measurements
+    n : int
+        network size
+    n_empty : int
+        number of unmonitored sites in the network
+    s : int
+        sparsity level
+
+    Returns
+    -------
+    mse_Dopt : dict
+        MSE for each number of refst in the network using Doptimal solutions
+    mse_rank : dict
+        MSE for each number of refst in the network using rankMax solutions
+
+    """
+    if s == 15 and n_empty == 3:
+        alphas = {0:1e0,1:-1e-2,2:-1e-2,
+                  3:-1e-2,4:1e0,5:1e0,
+                  6:1e0,7:1e-1,8:1e-2,
+                  9:-1e2,10:-1e1,11:-1e1,
+                  12:1e-2,13:1e-2,14:1e-2}
+    
+    elif s==15 and n_empty ==2:
+        alphas = {0:-1e-2,1:1e2,2:1e-2,
+                  3:1e-2,4:1e0,5:1e0,
+                  6:1e0,7:1e0,8:1e0,
+                  9:1e-2,10:-1e-2,11:-1e-1,
+                  12:-1e2,13:-1e-1,14:-1e-2}
+        
+    elif s==15 and n_empty == 1:
+        alphas = {0:-1e-2,1:1e-2,2:-1e-2,
+                  3:-1e-2,4:-1e1,5:1e1,
+                  6:-1e1,7:-1e1,8:-1e1,
+                  9:-1e2,10:-1e1,11:-1e1,
+                  12:-1e2,13:-1e1,14:-1e1}
+        
+    elif s==15 and n_empty == 0:
+        alphas = {0:-1e-2,1:-1e-2,2:-1e-2,
+                  3:-1e1,4:-1e1,5:-1e-2,
+                  6:-1e1,7:-1e1,8:-1e1,
+                  9:-1e1,10:-1e1,11:-1e1,
+                  12:-1e2,13:-1e1,14:-1e1}
+        
+        
+    total_refst = [i for i in alphas.keys()]
+    mse_Dopt = {el:np.inf for el in total_refst}
+    mse_rank = {el:np.inf for el in total_refst}
+    
+    
+    for num_refst in total_refst:
+        print(f'computing for {num_refst} Reference stations')
+        result_Dopt,result_rank,_ = compute_analytical_errors_criteria(dataset,num_refst,n_empty,s,alphas[num_refst],save_results=False)
+        mse_Dopt[num_refst] = result_Dopt
+        mse_rank[num_refst] = result_rank
+        
+    
+    return mse_Dopt, mse_rank
         
 
 def compute_analytical_errors_exhaustive(dataset,n_refst,var,num_el_chunk = 5000,save_results=False):
@@ -581,7 +668,7 @@ def compute_analytical_errors_exhaustive(dataset,n_refst,var,num_el_chunk = 5000
                                                       lowrank_basis.Psi, exhaustive_path,exhaustive_path)
         estimation_exhaustive.analytical_estimation_exhaustive(new_locs)
         it+=1
-    
+        
         if save_results:
             fname = f'{results_path}MSE_analytical_exhaustive_Full_{n_refst}RefSt_var{var:.1e}_r{s}_it{it}.pkl'
             with open(fname,'wb') as f:
@@ -667,6 +754,7 @@ def load_error_results_criteria(loc,var,s,n_refst,alpha_reg,path):
        
      
     
+
     
 
 def figure_exhaustive_criteria(errors_sorted,locations_sorted,rank_error,rankFM_error,Dopt_error,idx_rank,idx_rankFM,idx_Dopt,n_refst,var,save_fig=False):
@@ -692,8 +780,8 @@ if __name__ == '__main__':
     
     # network paramteres
     n = 18
-    n_refst = 5
-    n_lcs = 10
+    n_refst = 10
+    n_lcs = 5
     n_empty = 3
     s = 15#n_refst + n_lcs
     
@@ -709,12 +797,13 @@ if __name__ == '__main__':
     # solve convex sensor placement problem
     solve = False
     if solve:
-        solve_sensor_placement(dataset,criterion='D_optimal')
+        solve_sensor_placement(dataset,criterion='rankMax_FM')
         sys.exit()
     # validate alpha rankMax
     validate = False
     if validate:
-        mse_alphas = validation_alpha(dataset, n_refst,s,criterion='rankMax')
+        mse_alphas = validation_alpha(dataset, n_refst,s,n_empty,criterion='rankMax')
+        print(f'Minimum MSE for {n_refst} Reference stations: {min(mse_alphas.values()):.2e} at alpha: {[k for k,v in mse_alphas.items() if v==min(mse_alphas.values())][0]:.1e} ')
         sys.exit()
     
     # compute MSE using both criteria and exhaustive configurations forn given variance
@@ -736,16 +825,16 @@ if __name__ == '__main__':
             
             
             
-        mse_Dopt,mse_rank,mse_rankFM = compute_analytical_errors_criteria(dataset,n_refst,alpha_reg,save_results=True)
+        mse_Dopt,mse_rank,mse_rankFM = compute_analytical_errors_criteria(dataset,n_refst,n_empty,s,alpha_reg,save_results=True)
         
-        variances = np.concatenate(([0.0],np.logspace(-6,0,7)))
+        
+        variances = np.concatenate(([0.0],np.logspace(-2,0,2)))#np.concatenate(([0.0],np.logspace(-6,0,7)))
         num_el_chunk = 5000
         num_files = int(np.ceil(exhaustive_placement.num_distributions/num_el_chunk))
         for var in variances:
         # exhaustive estimation: splitted into chunks
             estimation_exhaustive = compute_analytical_errors_exhaustive(dataset, n_refst, var,num_el_chunk,save_results=True)
             
-        
             join_exhaustive_placement_iterations(results_path,var,num_files,locations='Unmonitored')
             join_exhaustive_placement_iterations(results_path,var,num_files,locations='Full')
             join_exhaustive_placement_iterations(results_path,var,num_files,locations='RefSt')
@@ -760,20 +849,21 @@ if __name__ == '__main__':
         ## Plot RMSE vs ranking for given variance and sensors proportions. Highlight criteria locations in the ranking.
         
         loc = 'Unmonitored' # ['Full','RefSt','LCS','Unmonitored']
-        var = 1e0
-        if n_refst == 5:
+        var = 1e-2
+        if n_refst == 5 and s==15:
             alpha_reg = 1e0
-        elif n_refst == 10:
+        elif n_refst == 10 and s==15:
             alpha_reg = -1e1
-        elif n_refst == 7:
+        elif n_refst == 7 and s==15:
             alpha_reg = 1e-1
+        
         elif n_refst == 5 and s==7:
             alpha_reg = -1e1
+        elif n_refst == 7 and s==7:
+            alpha_reg = 1e2
         elif n_refst == 10 and s == 7:
             alpha_reg = 1e2
               
-        
-        
         
         #load criteria results
         Dopt_error, rankMax_error,rankMaxFM_error, Dopt_locations, rankMax_locations, rankMaxFM_locations = load_error_results_criteria(loc, var,
@@ -782,7 +872,6 @@ if __name__ == '__main__':
                                                                                                                                         exhaustive_path)
         
         # improve results via swapping
-        
         rankMax_locations_swap, rankMax_mse_swap = solution_swap(dataset, s, var,rankMax_locations)
         rankMax_error_swap = np.sqrt(rankMax_mse_swap)
         rankMaxFM_locations_swap, rankMaxFM_mse_swap = solution_swap(dataset, s,var, rankMaxFM_locations)
@@ -802,11 +891,16 @@ if __name__ == '__main__':
         idx_rankMaxFM = exhaustive_placement.find_specific_configuration(rankMaxFM_locations_swap)
         idx_Dopt = exhaustive_placement.find_specific_configuration(Dopt_locations_swap)
         
+        plots = Plots.Plots(save_path=results_path,marker_size=1,
+                            fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
+                            show_plots=True)
         
-        figure_exhaustive_criteria(exhaustive_placement.errors_sorted,exhaustive_placement.loc_sorted,
-                                   rankMax_error,rankMaxFM_error,Dopt_error,
-                                   idx_rankMax,idx_rankMaxFM,idx_Dopt,
-                                   n_refst,var,save_fig=True)
+        plots.plot_ranking_error(exhaustive_placement.errors_sorted, exhaustive_placement.loc_sorted,
+                                 rankMax_error,rankMaxFM_error, Dopt_error, 
+                                 idx_rankMax,idx_rankMaxFM,idx_Dopt,
+                                 n_refst,var,s,save_fig=False)
+        
+        
         #%%
         ## plot RMSE vs ranking at var==0. Highlight criteria location in the ranking. REPEAT RMSE vs ranking at var==0 for results with var!=0
         var = 0.0
@@ -820,8 +914,11 @@ if __name__ == '__main__':
             
         elif n_refst == 5 and s==7:
             alpha_reg = -1e1
-        
-        
+        elif n_refst == 7 and s==7:
+            alpha_reg = 1e2
+        elif n_refst == 10 and s == 7:
+            alpha_reg = 1e2
+       
         Dopt_error, rankMax_error,rankMaxFM_error, Dopt_locations, rankMax_locations, rankMaxFM_locations = load_error_results_criteria(loc, var,
                                                                                                                                         s,n_refst,
                                                                                                                                         alpha_reg,
@@ -873,9 +970,32 @@ if __name__ == '__main__':
                                        variances, idx_rankMax, idx_rankMaxFM, idx_Dopt,
                                        n_refst,s,save_fig=True)
         
+        #%%
+        # Compare RMSE between both methods for different proportions of sensors
+        var = 1e-2
+        loc= 'Full'
+        range_empty = np.arange(0,n-s + 1,1)
         
+        df_results_rankMax = pd.DataFrame()
+        df_results_Dopt = pd.DataFrame()
         
-        
+        for num_empty in range_empty:
+            print(f'{num_empty} unmonitored locations')
+            mse_Dopt,mse_rankMax = compute_analytical_errors_all_proportions(dataset,n,num_empty,s)
+            rmse_Dopt = {el:np.inf for el in mse_Dopt.keys()}
+            rmse_rankMax = {el:np.inf for el in mse_rankMax.keys()}
+            for i in rmse_Dopt.keys():
+                rmse_Dopt[i] = np.sqrt(mse_Dopt[i].loc[var,loc])
+                rmse_rankMax[i] = np.sqrt(mse_rankMax[i].loc[var,loc])
+            df_rankMax = pd.DataFrame(rmse_rankMax.values(),index=rmse_rankMax.keys(),columns=[f'{num_empty}'])
+            df_Dopt = pd.DataFrame(rmse_Dopt.values(),index=rmse_Dopt.keys(),columns=[f'{num_empty}'])
+            df_results_rankMax = pd.concat((df_results_rankMax,df_rankMax),axis=1)
+            df_results_Dopt = pd.concat((df_results_Dopt,df_Dopt),axis=1)
+            
+        plots = Plots.Plots(save_path=results_path,marker_size=3,
+                            fs_label=7,fs_ticks=7,fs_legend=6,fs_title=10,
+                            show_plots=True)
+        plots.plot_best_algorithm_proportions(df_results_Dopt,df_results_rankMax,n,s,save_fig=True)
        
     
     

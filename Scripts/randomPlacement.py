@@ -8,6 +8,7 @@ Created on Wed Jul 12 11:01:55 2023
 import numpy as np
 from scipy import linalg
 from sklearn.metrics import mean_absolute_error,mean_squared_error
+import Formulas
 # ===================================================================================
 # Random sensor placement: generate random placement locations for (LCSs,RefSt,Empty)
 # ===================================================================================
@@ -243,7 +244,7 @@ class randomPlacement():
             LCS variance
         var_zero : float
             Ref st. variance
-
+        
         Returns
         -------
         None.
@@ -258,11 +259,68 @@ class randomPlacement():
             Theta_eps = C_eps@Psi
             Theta_zero = C_zero@Psi
             
+            
             Precision_matrix = (var_eps**(-1)*Theta_eps.T@Theta_eps) + (var_zero**(-1)*Theta_zero.T@Theta_zero)
-            Cov = np.linalg.pinv( Precision_matrix )
+            S = np.linalg.svd(Precision_matrix)[1]
+            rcond = np.linalg.cond(Precision_matrix)**-1
+            rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
+            #exponent = np.floor(np.log10(np.abs(rcond)))
+           
+            
+            Cov = np.linalg.pinv(Precision_matrix,rcond_pinv)
+           
             
             Covariances[idx] = Cov
         self.Covariances = Covariances
+        
+    def covariance_matrix_limit(self,Psi,var_eps,r):
+        """
+        Compute covariance matrix in the limit var_zero == 0
+
+        Parameters
+        ----------
+        Psi : numpy array
+            low-rank basis
+        var_eps : float
+            LCS variance
+        
+        
+        Returns
+        -------
+        None.
+
+        """
+        Covariances = {el:0 for el in np.arange(len(self.locations))}
+       
+        for idx in self.locations.keys():
+            C_eps = self.C[idx][0]
+            C_zero = self.C[idx][1]
+            C_empty = self.C[idx][2]
+            
+            Theta_eps = C_eps@Psi
+            Theta_zero = C_zero@Psi
+            Theta_empty = C_empty@Psi
+            
+            refst_matrix = Theta_zero.T@Theta_zero
+            
+            Is = np.identity(r)
+            P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+            
+            S1 = np.linalg.svd(Theta_eps@P)[1]
+            S2 = np.linalg.svd(P@Theta_eps.T)[1]
+            
+            rcond1_pinv = rcond_pinv = (S1[-1]+S1[-2])/(2*S1[0])
+            rcond2_pinv = rcond_pinv = (S2[-1]+S2[-2])/(2*S2[0])
+            
+            
+            Cov = var_eps*np.linalg.pinv(Theta_eps@P,rcond=rcond1_pinv)@np.linalg.pinv(P@Theta_eps.T,rcond=rcond2_pinv)
+          
+            
+            Covariances[idx] = Cov
+        
+            
+        self.Covariances = Covariances
+        
     
     def beta_estimated_GLS(self,Psi,ds_lcs,ds_refst,var_eps,var_zero):
         """

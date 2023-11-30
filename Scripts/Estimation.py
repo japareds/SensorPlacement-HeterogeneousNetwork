@@ -479,7 +479,6 @@ class Estimation():
         # get solution for specific number of refst in the network
         sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
         sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
-        print(f'rankMax chosen locations for epsilon {self.var_zero} sigma {self.var_eps}\n{sensor_placement.locations}')
         
         # check if solution exists
         if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
@@ -487,12 +486,22 @@ class Estimation():
             self.mse_analytical_full, self.mse_analytical_refst, self.mse_analytical_lcs, self.mse_analytical_unmonitored = np.inf,np.inf,np.inf,np.inf
             
             return
+        else:
+            print('Locations')
+            print(sensor_placement.locations[0])
+            print(sensor_placement.locations[1])
+            print(sensor_placement.locations[2])
+            print('Weights')
+            print(sensor_placement.weights[0])
+            print(sensor_placement.weights[1])
+            
         
         # get theta matrices
         sensor_placement.C_matrix()
         Theta_lcs = sensor_placement.C[0]@self.Psi
         Theta_refst = sensor_placement.C[1]@self.Psi
-        Theta_empty = sensor_placement.C[2]@self.Psi
+        if self.p_empty !=0: 
+            Theta_empty = sensor_placement.C[2]@self.Psi
         
         
         # get estimated regressor covariance matrix
@@ -505,14 +514,28 @@ class Estimation():
         cov_full = self.Psi@sensor_placement.Cov@self.Psi.T
         cov_refst = Theta_refst@sensor_placement.Cov@Theta_refst.T
         cov_lcs = Theta_lcs@sensor_placement.Cov@Theta_lcs.T
-        cov_empty = Theta_empty@sensor_placement.Cov@Theta_empty.T
+        try:
+            cov_empty = Theta_empty@sensor_placement.Cov@Theta_empty.T
+        except:
+            cov_empty = np.zeros((self.n,self.n))
         
         
         
         self.mse_analytical_full = np.trace(np.abs(cov_full))/self.n
-        self.mse_analytical_refst = np.trace(cov_refst)/self.p_zero_estimate
-        self.mse_analytical_lcs = np.trace(cov_lcs)/self.p_eps_estimate
-        self.mse_analytical_unmonitored = np.trace(np.abs(cov_empty))/self.p_empty
+        if self.p_zero_estimate !=0:
+            self.mse_analytical_refst = np.trace(cov_refst)/self.p_zero_estimate
+        else:
+            self.mse_analytical_refst = np.nan
+        
+        if self.p_eps_estimate !=0:
+            self.mse_analytical_lcs = np.trace(cov_lcs)/self.p_eps_estimate
+        else:
+            self.mse_analytical_lcs = np.nan
+        
+        if self.p_empty !=0:
+            self.mse_analytical_unmonitored = np.trace(np.abs(cov_empty))/self.p_empty
+        else:
+            self.mse_analytical_unmonitored = np.nan
        
     def analytical_estimation_random(self,random_path):
         """

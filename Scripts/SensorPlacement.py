@@ -614,7 +614,7 @@ class SensorPlacement:
         ----------
         Psi : numpy array
             low-rank basis
-
+       
         Returns
         -------
         None.
@@ -625,10 +625,21 @@ class SensorPlacement:
         Theta_lcs = C_lcs@Psi
         Theta_refst = C_refst@Psi
         
-        #Cov = np.linalg.pinv( (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs )
+        if C_lcs.shape[0] == 0:# no LCSs
+            Precision_matrix = (self.var_zero**-1)*Theta_refst.T@Theta_refst
+        elif C_refst.shape[0] == 0:#no Ref.St.
+            Precision_matrix = (self.var_eps**-1)*Theta_lcs.T@Theta_lcs
+        else:
+            Precision_matrix = (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs
         
-        self.Cov = np.linalg.pinv( (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs )
-                
+        S = np.linalg.svd(Precision_matrix)[1]
+        rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
+      
+        Cov = np.linalg.pinv( Precision_matrix,rcond_pinv)
+       
+      
+        self.Cov = Cov
+        
     def covariance_matrix_limit(self,Psi):
         """
         Compute covariance matrix in the limit var_zero = 0
@@ -637,6 +648,7 @@ class SensorPlacement:
         ----------
         Psi : numpy array
             low-rank basis
+       
 
         Returns
         -------
@@ -647,13 +659,51 @@ class SensorPlacement:
         C_refst = self.C[1]
         Theta_lcs = C_lcs@Psi
         Theta_refst = C_refst@Psi
-        refst_matrix = Theta_refst.T@Theta_refst
         
-        Is = np.identity(self.r)
-        P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
         
-        self.Cov = self.var_eps*np.linalg.pinv(Theta_lcs@P)@np.linalg.pinv(P@Theta_lcs.T)
-        
+        if C_lcs.shape[0] == 0:#no LCSs
+            self.Cov = np.zeros(shape=(self.r,self.r))
+            return
+        elif C_refst.shape[0] == 0:#no RefSt
+            Precision_matrix = (self.var_eps**-1)*Theta_lcs.T@Theta_lcs
+            S = np.linalg.svd(Precision_matrix)[1]
+            rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
+            self.Cov = np.linalg.pinv( Precision_matrix,rcond_pinv)
+            
+            return
+            
+        else:
+            # compute covariance matrix using projector
+            refst_matrix = Theta_refst.T@Theta_refst
+            
+            Is = np.identity(self.r)
+            P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+            
+            rank1 = np.linalg.matrix_rank(Theta_lcs@P,tol=1e-10)
+            rank2 = np.linalg.matrix_rank(P@Theta_lcs.T,tol=1e-10)
+            
+            S1 = np.linalg.svd(Theta_lcs@P)[1]
+            S2 = np.linalg.svd(P@Theta_lcs.T)[1]
+            
+            if rank1==min((Theta_lcs@P).shape):
+                try:
+                    rcond1_pinv = (S1[-1]+S1[-2])/(2*S1[0])
+                except:
+                    rcond1_pinv = 1e-15
+            else:
+                rcond1_pinv = (S1[rank1]+S1[rank1-1])/(2*S1[0])
+            
+            if rank2==min((P@Theta_lcs.T).shape):
+                try:
+                    rcond2_pinv = (S2[-1]+S2[-2])/(2*S2[0])
+                except:
+                    rcond2_pinv = 1e-15
+            else:
+                rcond2_pinv = (S2[rank2]+S2[rank2-1])/(2*S2[0])
+            
+            self.Cov = self.var_eps*np.linalg.pinv(Theta_lcs@P,rcond=rcond1_pinv)@np.linalg.pinv(P@Theta_lcs.T,rcond=rcond2_pinv)
+         
+            
         
         
     def beta_estimated_GLS(self,Psi,y_refst,y_lcs):

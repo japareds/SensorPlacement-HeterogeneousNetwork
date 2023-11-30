@@ -88,7 +88,7 @@ class Placement():
         lowrank_basis.low_rank_decomposition(normalize=True)
     
         # results
-        range_sensors = np.arange(0,self.n-self.p_empty+1,1)#np.arange(0,r+1,1)
+        range_sensors = np.arange(0,self.n-self.p_empty+1,1)
                 
         
         self.dict_weights = {el:0 for el in range_sensors}

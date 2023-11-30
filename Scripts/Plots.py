@@ -1377,7 +1377,7 @@ class Plots():
             
     
     # =============================================================================
-    # RANK EXHAUSTIVE NETWORK
+    # EXHAUSTIVE NETWORK
     # =============================================================================
     
     def plot_ranking_error(self,errors_sorted,locations_sorted,rank_error,rankFM_error, Dopt_error, idx_rank,idx_rankFM,idx_Dopt,n_refst,var,s,save_fig = False):
@@ -1422,12 +1422,17 @@ class Plots():
             
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(xrange,errors_sorted,color='#b03a2e')
+        ax.plot(xrange,errors_sorted,color='k')
         ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='orange',label=f'rankMax location {rank_loc}')
         ax.vlines(x=rankFM_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#d35400',label=f'Hybrid-FM location {rankFM_loc}')
         if Dopt_error != np.inf:
             ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted),colors='#1a5276',label=f'detMin location {Dopt_loc}')
+        
         ax.set_yscale('log')
+        if s==15:
+            ax.set_yticks(np.logspace(-1,2,4))
+        elif s==7 and var!=0.0:
+            ax.set_yticks(np.logspace(-2,1,4))
         ax.set_ylabel('RMSE')
         
         idx = [int(i) for i in np.logspace(0,6,7)]
@@ -1435,10 +1440,7 @@ class Plots():
         ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
         ax.set_xscale('log')
         ax.set_xlabel(r'$i$-th configuration')
-        if 1e2<rank_loc<1e4 or 1e2<rankFM_loc<1e4 or 1e2<Dopt_loc<1e4:
-            ax.legend(loc='upper left',ncol=1)
-        else:
-            ax.legend(loc='upper center',ncol=1)
+        ax.legend(loc='upper center',ncol=2,bbox_to_anchor=(0.5, 1.1),framealpha=1)
         ax.tick_params(axis='both', which='major')
         fig.tight_layout()
         
@@ -1487,13 +1489,14 @@ class Plots():
         
         
         ax.set_yscale('log')
-        ax.set_yticks(np.logspace(-1,4,6))
+        ax.set_yticks(np.logspace(-2,2,5))
         ax.set_ylabel('RMSE')
         
         idx = [int(i) for i in np.logspace(0,6,7)]
         ax.set_xticks(xrange[idx])
         ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
         ax.set_xscale('log')
+        #ax.set_xlim(0.5,1e6+0.5)
         ax.set_xlabel(r'$i$-th configuration')
         ax.legend(loc='upper center',ncol=2,bbox_to_anchor=(0.5, 1.1),framealpha=1)
         ax.tick_params(axis='both', which='major')
@@ -1503,6 +1506,46 @@ class Plots():
         if save_fig:
             fname = f'{self.save_path}RMSE_rankingComparison_{n_refst}RefSt_var{variances.min():.1e}to{variances.max():.1e}_r{s}.png'
             fig.savefig(fname,dpi=300,format='png')
+        
+    def plot_best_algorithm_proportions(self,df_Dopt,df_rank,n,s,tol=1e-4,save_fig=False):
+        
+        diff = df_Dopt - df_rank
+        empty_range = [int(i) for i in diff.columns]
+        
+        num_refst_range = [i for i in diff.index]
+       
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.grid()
+        for num_refst in num_refst_range:
+            for num_empty in empty_range:
+                num_lcs = n - num_refst - num_empty
+                if diff.loc[num_refst,str(num_empty)]>0: # error by Dopt is larger / rankMax is lower
+                    rank_scatter = ax.scatter(num_refst,num_lcs,color='orange') 
+                elif diff.loc[num_refst,str(num_empty)]<0:# error by rankMax is larger / Dopt is lower
+                    Dopt_scatter = ax.scatter(num_refst,num_lcs,color='#1a5276')
+                else:
+                    Tie_scatter = ax.scatter(num_refst,num_lcs,color='k')
+        
+        ax.set_xticks(np.arange(0,num_refst_range[-1]+1,2))
+        ax.set_xticklabels(ax.get_xticks())
+        ax.set_xlabel('Number of reference stations')
+        
+        ax.set_yticks(np.arange(1,n+1,2))
+        ax.set_yticklabels(ax.get_yticks())
+        ax.set_ylabel('Number of LCSs')
+        ax.legend((rank_scatter,Dopt_scatter,Tie_scatter),('rankMax','Heterogeneous Joshi-Boyd','Tie'),
+                  loc='upper center',ncol=3,bbox_to_anchor=(0.5, 1.1),framealpha=1)
+        ax.tick_params(axis='both', which='major')
+        
+        fig.tight_layout()
+        
+        if save_fig:
+            fname = f'{self.save_path}Scatter_bestAlgorithm_{n}nTot_r{s}.png'
+            fig.savefig(fname,dpi=300,format='png')
+        
+       
+        
         
         
     
