@@ -137,14 +137,14 @@ class Placement():
         
         # random locations
         try:
-            fname = results_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
+            fname = results_path+f'randomPlacement_locations_{self.n}N_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
             with open(fname,'wb') as f:
                 pickle.dump(self.dict_locations_random,f)
         except:
             pass
             
             
-        fname = results_path+f'Weights_{self.solving_algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_'
+        fname = results_path+f'Weights_{self.solving_algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_'
         if self.solving_algorithm == 'rankMax' or self.solving_algorithm == 'rankMax_FM':
             fname+=f'alpha{self.alpha_reg:.1e}.pkl'
         else:
@@ -152,7 +152,7 @@ class Placement():
         with open(fname,'wb') as f:
             pickle.dump(self.dict_weights,f)
     
-        fname = results_path+f'DiscreteLocations_{self.solving_algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_'
+        fname = results_path+f'DiscreteLocations_{self.solving_algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_'
         if self.solving_algorithm == 'rankMax' or self.solving_algorithm == 'rankMax_FM':
             fname+=f'alpha{self.alpha_reg:.1e}.pkl'
         else:
@@ -161,7 +161,7 @@ class Placement():
         with open(fname,'wb') as f:
             pickle.dump(self.dict_locations,f)
     
-        fname = results_path+f'ExecutionTime_{self.solving_algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_'
+        fname = results_path+f'ExecutionTime_{self.solving_algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_'
         if self.solving_algorithm == 'rankMax' or self.solving_algorithm == 'rankMax_FM':
             fname+=f'alpha{self.alpha_reg:.1e}.pkl'
         else:

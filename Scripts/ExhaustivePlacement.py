@@ -963,7 +963,7 @@ if __name__ == '__main__':
             
             
         plots = Plots.Plots(save_path=results_path,marker_size=1,
-                            fs_label=7,fs_ticks=7,fs_legend=6,fs_title=10,
+                            fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                             show_plots=True)
         plots.ranking_error_comparison(errors_sorted_zero, locations_sorted_zero, 
                                        Dopt_error, errors_sorted,

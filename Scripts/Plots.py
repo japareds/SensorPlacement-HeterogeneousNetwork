@@ -1450,7 +1450,7 @@ class Plots():
             fig.savefig(fname,dpi=300,format='png')
             
         
-    def ranking_error_comparison(self,errors_sorted_zero,locations_sorted_zero,Dopt_error,errors_sorted,variances,idx_rank,idx_rankFM,idx_Dopt,n_refst,s,save_fig=False):
+    def ranking_error_comparison(self,errors_sorted_zero,locations_sorted_zero,Dopt_error,errors_sorted,variances,idx_rank,idx_rankFM,idx_Dopt,n_refst,s,include_hybrid=False,save_fig=False):
      
         # Indices at criteria results
         xrange = np.arange(1,len(errors_sorted_zero)+1,1)
@@ -1481,10 +1481,12 @@ class Plots():
         # exhaustive results for var==0
         ax.plot(xrange,errors_sorted_zero,color='k',label=r'$\epsilon^2/\sigma^2=0.0$',alpha=1.0)
         # highlight locations of different criteria
-        ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted_zero),colors='orange',label=f'rankMax ranked {rank_loc}')
-        ax.vlines(x=rankFM_loc,ymin = 0.0, ymax = np.max(errors_sorted_zero),colors='#d35400',label=f'Hybrid-FM ranked {rankFM_loc}')
+        ax.vlines(x=rank_loc,ymin = 0.0, ymax = np.max(errors_sorted_zero),colors='orange',label=f'rankMax')#ranked {rank_loc}
+        if include_hybrid:
+            ax.vlines(x=rankFM_loc,ymin = 0.0, ymax = np.max(errors_sorted_zero),colors='#d35400',label=f'Hybrid-FM')#ranked {rankFM_loc}
+   
         if Dopt_error != np.inf:
-            ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted_zero),colors='#1a5276',label=f'detMin ranked {Dopt_loc}')
+            ax.vlines(x=Dopt_loc,ymin = 0.0, ymax = np.max(errors_sorted_zero),colors='#1a5276',label=f'Heterogeneous Joshi-Boyd')# ranked {Dopt_loc}
         
         
         
@@ -1498,7 +1500,7 @@ class Plots():
         ax.set_xscale('log')
         #ax.set_xlim(0.5,1e6+0.5)
         ax.set_xlabel(r'$i$-th configuration')
-        ax.legend(loc='upper center',ncol=2,bbox_to_anchor=(0.5, 1.1),framealpha=1)
+        ax.legend(loc='upper center',ncol=2,bbox_to_anchor=(0.5, 1.15),framealpha=1)
         ax.tick_params(axis='both', which='major')
         fig.tight_layout()
         

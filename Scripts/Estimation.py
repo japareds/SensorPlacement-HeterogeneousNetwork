@@ -491,9 +491,7 @@ class Estimation():
             print(sensor_placement.locations[0])
             print(sensor_placement.locations[1])
             print(sensor_placement.locations[2])
-            print('Weights')
-            print(sensor_placement.weights[0])
-            print(sensor_placement.weights[1])
+          
             
         
         # get theta matrices

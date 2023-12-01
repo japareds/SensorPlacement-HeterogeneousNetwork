@@ -322,6 +322,9 @@ class SensorPlacement:
         elif self.algorithm == 'rankMax':
             if self.p_empty == 0:
                 self.rankMax_placement(Psi,alpha)
+            elif self.p_eps == 0: # no LCS - use Doptimal
+                self.var_zero = 1e0
+                self.DOptimal_placement(Psi)
             else:
                 self.rankMax_placement(Psi,alpha)
         
@@ -364,11 +367,11 @@ class SensorPlacement:
 
         """
         if self.algorithm == 'rankMax' or self.algorithm == 'rankMax_FM' :
-            fname = dicts_path+f'DiscreteLocations_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_alpha{alpha_reg:.1e}.pkl'
+            fname = dicts_path+f'DiscreteLocations_{self.algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_alpha{alpha_reg:.1e}.pkl'
             with open(fname,'rb') as f:
                 self.dict_locations = pickle.load(f)
             
-            fname = dicts_path+f'Weights_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_alpha{alpha_reg:.1e}.pkl'
+            fname = dicts_path+f'Weights_{self.algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_alpha{alpha_reg:.1e}.pkl'
             with open(fname,'rb') as f:
                 self.dict_weights = pickle.load(f)
         else:
