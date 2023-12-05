@@ -105,9 +105,18 @@ class randomPlacement():
             loc_eps = self.locations[idx][0]
             loc_zero = self.locations[idx][1]
             loc_empty = self.locations[idx][2]
-            C_eps = In[loc_eps,:]
-            C_zero = In[loc_zero,:]
-            C_empty = In[loc_empty,:]
+            if len(loc_eps) !=0:
+                C_eps = In[loc_eps,:]
+            else:
+                C_eps = []
+            if len(loc_zero) !=0:
+                C_zero = In[loc_zero,:]
+            else:
+                C_zero = []
+            if len(loc_empty)!=0:
+                C_empty = In[loc_empty,:]
+            else:
+                C_empty = []
             C[idx] = [C_eps,C_zero,C_empty]
         self.C = C
     
@@ -295,28 +304,51 @@ class randomPlacement():
             C_zero = self.C[idx][1]
             C_empty = self.C[idx][2]
             
-            Theta_eps = C_eps@Psi
-            Theta_zero = C_zero@Psi
-            Theta_empty = C_empty@Psi
             
-            if C_eps.shape[0] == 0:#no LCSs
+            if self.p_eps == 0:#no LCSs
                 Cov = np.zeros(shape=(r,r))
-            elif C_zero.shape[0] == 0:#no RefSt
+            elif self.p_zero == 0:#no RefSt
+                Theta_eps = C_eps@Psi
                 Precision_matrix = (var_eps**-1)*Theta_eps.T@Theta_eps
                 S = np.linalg.svd(Precision_matrix)[1]
                 rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
                 Cov = np.linalg.pinv( Precision_matrix,rcond_pinv)
             else: # compute covariance matrix using projector
+                Theta_eps = C_eps@Psi
+                Theta_zero = C_zero@Psi
+                
+                
                 refst_matrix = Theta_zero.T@Theta_zero
-                    
                 Is = np.identity(r)
-                P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
-                  
+                try:
+                    P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+                except:
+                    P = Is - refst_matrix@np.linalg.pinv(refst_matrix,hermitian=True,rcond=1e-10)
+                
+                
+                rank1 = np.linalg.matrix_rank(Theta_eps@P,tol=1e-10)
+                rank2 = np.linalg.matrix_rank(P@Theta_eps.T,tol=1e-10)
+                
                 S1 = np.linalg.svd(Theta_eps@P)[1]
                 S2 = np.linalg.svd(P@Theta_eps.T)[1]
+                
+                if rank1==min((Theta_eps@P).shape):
+                    try:
+                        rcond1_pinv = (S1[-1]+S1[-2])/(2*S1[0])
+                    except:
+                        rcond1_pinv = 1e-15
+                else:
+                    rcond1_pinv = (S1[rank1]+S1[rank1-1])/(2*S1[0])
+                
+                if rank2==min((P@Theta_eps.T).shape):
+                    try:
+                        rcond2_pinv = (S2[-1]+S2[-2])/(2*S2[0])
+                    except:
+                        rcond2_pinv = 1e-15
+                else:
+                    rcond2_pinv = (S2[rank2]+S2[rank2-1])/(2*S2[0])
+                  
                     
-                rcond1_pinv = rcond_pinv = (S1[-1]+S1[-2])/(2*S1[0])
-                rcond2_pinv = rcond_pinv = (S2[-1]+S2[-2])/(2*S2[0])
                     
                     
                 Cov = var_eps*np.linalg.pinv(Theta_eps@P,rcond=rcond1_pinv)@np.linalg.pinv(P@Theta_eps.T,rcond=rcond2_pinv)

@@ -464,7 +464,7 @@ class Plots():
         
         mpl.use(self.backend)
         
-    def heatmap_criteria_ratio(self,df_rmse_rankMax,df_rmse_Dopt,n,s,var,save_fig=False):
+    def heatmap_criteria_ratio(self,df_rmse_rankMax,df_rmse_Dopt,n,s,var,center_value=1.0,extreme_range=0.5,text_note_size=5,save_fig=False):
         """
         Heatmap image showing RMSE ratio between rankMax solutions and Doptimal solutions.
         If the ratio is less than one then rankMax locations are better for reconstructing the signal.
@@ -487,6 +487,8 @@ class Plots():
             sparsity level
         var : float
             variances ratio
+        text_note_size : int
+            size of text showing pixel value
         save_fig : bool, optional
             save generated figure. The default is False.
 
@@ -507,38 +509,41 @@ class Plots():
         
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        crange = np.arange(0.5,1.6,0.1)
+        crange = np.arange(center_value-extreme_range,center_value+extreme_range+0.1,0.1)
         cmap = mpl.colormaps['summer'].resampled(64)#len(crange)
         cmap.set_bad('k',0.8)
         
         # different colorbar normalizations choose one
         bnorm = mpl.colors.BoundaryNorm(crange, cmap.N,extend='max')
-        cnorm = mpl.colors.CenteredNorm(vcenter=1.0,halfrange=0.5)
+        cnorm = mpl.colors.CenteredNorm(vcenter=center_value,halfrange=extreme_range)
         divnorm = mpl.colors.TwoSlopeNorm(vcenter=1.0,vmin=0.5,vmax=np.ceil(max_val))
         
         im = ax.imshow(df_rmse_ratio.T,cmap,
                        norm=cnorm,interpolation=None)
+        
+        cbar_extension = 'both' if (center_value-extreme_range) != 0 else 'neither'
+        
         cbar = fig.colorbar(im,ax=ax,
                             orientation='horizontal',location='top',
-                            label=r'$RMSE_{RM}$ / $RMSE_{HJB}$',extend='both')
+                            label=r'$RMSE_{RM}$ / $RMSE_{HJB}$',extend=cbar_extension)
         
-        
-        for (j,i),label in np.ndenumerate(df_rmse_ratio.T):
-            ax.text(i,j,f'{label:.2f}',ha='center',va='center',color='k',size=5)
+        if text_note_size != 0:
+            for (j,i),label in np.ndenumerate(df_rmse_ratio.T):
+                ax.text(i,j,f'{label:.2f}',ha='center',va='center',color='k',size=text_note_size)
             
 
         
         
-        cbar.set_ticks(np.arange(crange[0],crange[-1]+0.25,0.25))
+        cbar.set_ticks(np.arange(center_value-extreme_range,center_value+extreme_range+0.25,0.25))
         cbar.set_ticklabels([round(i,2) for i in cbar.get_ticks()])
         
         xrange = [i for i in df_rmse_ratio.T.columns]
-        ax.set_xticks(xrange)
+        ax.set_xticks(np.arange(xrange[0],xrange[-1],5))
         ax.set_xticklabels(ax.get_xticks())
         ax.set_xlabel('Number of\n reference stations')
         
         yrange = [int(i) for i in df_rmse_ratio.columns]
-        ax.set_yticks(yrange)
+        ax.set_yticks(np.arange(yrange[0],yrange[-1],5))
         ax.set_yticklabels(ax.get_yticks())
         ax.set_ylabel('Number of\n unmonitored locations')
         
@@ -562,7 +567,7 @@ if __name__ == '__main__':
     #exhaustive_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Results/Exhaustive_network/'
     
     # network paramteres
-    N = 71 #[18,71]
+    N = 18 #[18,71]
     POLLUTANT = 'O3' #['O3','NO2']
     
     if N==71 and POLLUTANT == 'O3':
@@ -612,7 +617,7 @@ if __name__ == '__main__':
         sys.exit()
         
     # compute MSE using both criteria and exhaustive configurations forn given variance
-    estimate = True
+    estimate = False
     if estimate:
         var = 0e0
         if var == 0.0:
@@ -687,7 +692,7 @@ if __name__ == '__main__':
     show_plots = True
     if show_plots:
         # load files with RMSE for both criteria
-        var = 1e-4 #[1e0,1e-2,1e-4,1e-6]
+        var = 0e0 #[1e0,1e-2,1e-4,1e-6]
         print(f'Showing figures comparing both sensor placement criteria\n Network size: {N}\n sparsity: {S}\n variances ratio: {var:.2e}')
         input('Press Enter to continue ...')
         df_rmse_rankMax = pd.read_csv(results_path+f'Criteria_comparison/RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
@@ -697,7 +702,9 @@ if __name__ == '__main__':
                             fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                             show_plots=True)
         plots.heatmap_criteria_ratio(df_rmse_rankMax,df_rmse_Dopt,
-                                     N,S,var,save_fig=False)
+                                     N,S,var,
+                                     center_value=0.5,extreme_range=0.5,
+                                     text_note_size=5,save_fig=False)
 
     
    

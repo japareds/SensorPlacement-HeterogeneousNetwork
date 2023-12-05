@@ -52,7 +52,6 @@ class ExhaustivePlacement():
         print(f'Generating all possible combinations for distributing {self.n_refst + self.n_lcs} sensors in total on a network of {self.n} locations.\n{self.n_refst} reference stations\n{self.n_lcs} LCS\n{self.n_empty} unmonitored locations')
         
         print(f'In total there are {math.comb(self.n,self.n_refst)*math.comb(self.n-self.n_refst,self.n_lcs):.2e} combinations')
-        input('Press Enter to continue ...')
         all_locations = np.arange(self.n)
         # all possible locations for reference stations
         self.loc_refst = {el:np.array(i) for el,i in zip(range(math.comb(self.n,self.n_refst)),itertools.combinations(np.arange(self.n), self.n_refst))}
@@ -243,7 +242,7 @@ def compute_minimum_analytical_rmse(dataset,lowrank_basis,exhaustive_placement,n
     it = 0
     min_mse = []
     
-    for item in chunks(exhaustive_placement.locations, num_el_chunk): # split dict into chunk for memory
+    for item in chunks(exhaustive_placement.locations, num_el_chunk): # split dict into chunks for memory
         new_locs = {el:i for el,i in zip(range(num_el_chunk),item.values())}    
         estimation_exhaustive = Estimation.Estimation(n, s, 
                                                       n_empty, n_refst, 
@@ -343,7 +342,7 @@ if __name__ == '__main__':
     n_refst_range = np.arange(0,S,1)
     n_empty_range = np.arange(0,N-S+1,1)
     
-    estimate = False
+    estimate = True
     if estimate:
         print(f'Searching for minimum RMSE\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Variances ratio: {var:.1e}\n Number of unmonitored locations ranges from {n_empty_range[0]} to {n_empty_range[-1]}\n Number of reference stations ranges from 0 to {S-1}\n The rest are LCS up to complete monitored locations')
         input('Press Enter to continue ...')
@@ -365,11 +364,11 @@ if __name__ == '__main__':
                 num_el_bins = 5000
                 num_files = int(np.ceil(exhaustive_placement.num_distributions/num_el_bins))
                 
-                min_mse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
+                min_rmse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
                                                           N, n_refst, n_empty, 
                                                           S, var,num_el_bins)
                 
-                df_exhaustive_placement.loc[n_refst,n_empty] = min_mse
+                df_exhaustive_placement.loc[n_refst,n_empty] = min_rmse
                 
                 
             df_rmse_min = pd.concat((df_rmse_min,df_exhaustive_placement),axis=1)

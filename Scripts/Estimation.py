@@ -574,24 +574,38 @@ class Estimation():
         
         for idx in random_placement.Covariances:
         
-            # get theta matrices
-            Theta_lcs = random_placement.C[idx][0]@self.Psi
-            Theta_refst = random_placement.C[idx][1]@self.Psi
-            Theta_empty = random_placement.C[idx][2]@self.Psi
-        
+            
             # compute covariance estimated residuals
             cov_full = self.Psi@random_placement.Covariances[idx]@self.Psi.T
-            cov_refst = Theta_refst@random_placement.Covariances[idx]@Theta_refst.T
-            cov_lcs = Theta_lcs@random_placement.Covariances[idx]@Theta_lcs.T
-            cov_empty = Theta_empty@random_placement.Covariances[idx]@Theta_empty.T
+            if self.p_zero_estimate !=0:
+                Theta_refst = random_placement.C[idx][1]@self.Psi
+                cov_refst = Theta_refst@random_placement.Covariances[idx]@Theta_refst.T
+                self.mse_analytical_refst_random[idx].append(np.trace(cov_refst)/self.p_zero_estimate)
+                
+            else:
+                self.mse_analytical_refst_random[idx].append(np.nan)
+            
+            if self.p_eps_estimate !=0:
+                Theta_lcs = random_placement.C[idx][0]@self.Psi
+                cov_lcs = Theta_lcs@random_placement.Covariances[idx]@Theta_lcs.T
+                self.mse_analytical_lcs_random[idx].append(np.trace(cov_lcs)/self.p_eps_estimate)
+
+            else:
+                self.mse_analytical_lcs_random[idx].append(np.nan)
+            
+            if self.p_empty !=0:
+                Theta_empty = random_placement.C[idx][2]@self.Psi
+                cov_empty = Theta_empty@random_placement.Covariances[idx]@Theta_empty.T
+                self.mse_analytical_unmonitored_random[idx].append(np.trace(np.abs(cov_empty))/self.p_empty)
+                
+            else:
+                self.mse_analytical_unmonitored_random[idx].append(np.nan)
             
         
-        
             self.mse_analytical_full_random[idx].append(np.trace(np.abs(cov_full))/self.n)
-            self.mse_analytical_refst_random[idx].append(np.trace(cov_refst)/self.p_zero_estimate)
-            self.mse_analytical_lcs_random[idx].append(np.trace(cov_lcs)/self.p_eps_estimate)
-            self.mse_analytical_unmonitored_random[idx].append(np.trace(np.abs(cov_empty))/self.p_empty)
-        
+            
+            
+            
         self.mse_analytical_full_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_full_random.values()],confidence=0.50) 
         self.mse_analytical_refst_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_refst_random.values()],confidence=0.50) 
         self.mse_analytical_lcs_random = self.mean_confidence_interval([i[0] for i in self.mse_analytical_lcs_random.values()],confidence=0.50) 
@@ -617,24 +631,38 @@ class Estimation():
         self.mse_analytical_unmonitored = {el:[] for el in random_placement.Covariances}
         
         for idx in random_placement.Covariances:
-        
-            # get theta matrices
-            Theta_lcs = random_placement.C[idx][0]@self.Psi
-            Theta_refst = random_placement.C[idx][1]@self.Psi
-            Theta_empty = random_placement.C[idx][2]@self.Psi
-        
-            # compute covariance estimated residuals
-            cov_full = self.Psi@random_placement.Covariances[idx]@self.Psi.T
-            cov_refst = Theta_refst@random_placement.Covariances[idx]@Theta_refst.T
-            cov_lcs = Theta_lcs@random_placement.Covariances[idx]@Theta_lcs.T
-            cov_empty = Theta_empty@random_placement.Covariances[idx]@Theta_empty.T
             
-        
-        
+             
+            # compute covariance estimated residuals
+            
+            if self.p_zero_estimate !=0:
+                Theta_refst = random_placement.C[idx][1]@self.Psi
+                cov_refst = Theta_refst@random_placement.Covariances[idx]@Theta_refst.T
+                self.mse_analytical_refst[idx].append(np.trace(cov_refst)/self.p_zero_estimate)
+                
+            else:
+                self.mse_analytical_refst[idx].append(np.nan)
+            
+            if self.p_eps_estimate !=0:
+                Theta_lcs = random_placement.C[idx][0]@self.Psi
+                cov_lcs = Theta_lcs@random_placement.Covariances[idx]@Theta_lcs.T
+                self.mse_analytical_lcs[idx].append(np.trace(cov_lcs)/self.p_eps_estimate)
+
+            else:
+                self.mse_analytical_lcs[idx].append(np.nan)
+            
+            if self.p_empty !=0:
+                Theta_empty = random_placement.C[idx][2]@self.Psi
+                cov_empty = Theta_empty@random_placement.Covariances[idx]@Theta_empty.T
+                self.mse_analytical_unmonitored[idx].append(np.trace(np.abs(cov_empty))/self.p_empty)
+                
+            else:
+                self.mse_analytical_unmonitored[idx].append(np.nan)
+            
+            cov_full = self.Psi@random_placement.Covariances[idx]@self.Psi.T
             self.mse_analytical_full[idx].append(np.trace(np.abs(cov_full))/self.n)
-            self.mse_analytical_refst[idx].append(np.trace(cov_refst)/self.p_zero_estimate)
-            self.mse_analytical_lcs[idx].append(np.trace(cov_lcs)/self.p_eps_estimate)
-            self.mse_analytical_unmonitored[idx].append(np.trace(np.abs(cov_empty))/self.p_empty)
+        
+          
         
       
         
