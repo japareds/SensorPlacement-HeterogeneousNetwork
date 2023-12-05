@@ -9,7 +9,9 @@ Created on Fri Dec  1 11:09:41 2023
 import os
 import pandas as pd
 import numpy as np
-import math
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
 import pickle
 import sys
 import warnings
@@ -19,7 +21,8 @@ import DataSet as DS
 import LowRankBasis as LRB
 import compute_weights as CW
 import Estimation
-import Plots
+
+
 #%% 
 # =============================================================================
 # Dataset and network
@@ -61,7 +64,7 @@ def load_dataset(files_path,n,pollutant):
 
 def solve_sensor_placement(dataset,n,n_empty,s,results_path,criterion='rankMax'):
     alphas = np.concatenate((-np.logspace(-2,2,5),np.logspace(-2,2,5)))
-    variances = variances = np.concatenate(([0.0],np.logspace(-2,0,3)))
+    variances = variances = np.concatenate(([0.0],np.logspace(-6,0,4)))
     var_lcs = 1e0
     if criterion == 'rankMax':
         var_refst = 0
@@ -259,7 +262,7 @@ def compute_analytical_errors_criteria(dataset,n,n_refst,n_empty,s,alpha_reg,fil
       
     return mse_Dopt,mse_rank
 
-def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,n_swaps=100):
+def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,solution_weights,n_swaps=100):
     """
     Swaps solution found by different criteria in solution_dist and exchange reference station locations with unmonitored ones.
     If an improven on the covariance matrix is found then the new distribution is used.
@@ -282,6 +285,8 @@ def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,
         variances ratio
     solution_dist : list
         indices of [LCS,RefSt,Unmonitored] locations
+    solution_weights : list
+        weights on every location for each class of sensor [ [lcs],[refst] ]
     n_swaps : int, optional
         Maximum number of swap attemps. If reached the algorithm stops. The default is 100.
 
@@ -305,6 +310,10 @@ def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,
     lowrank_basis.low_rank_decomposition(normalize=True)
     dataset.project_basis(lowrank_basis.Psi)
     
+    # sensor palcement failure
+    if solution_weights[0].sum()==0 and solution_weights[1].sum()==0:
+        print(f'Failure solving sensor placement: reference stations: {n_refst}\n unmonitored locations: {n_empty}\n variances ratio: {var:.2e}')
+        return solution_dist, np.inf
     
     # Original covariance matrix
     sensor_placement = SP.SensorPlacement('rankMax', n, s, 
@@ -342,7 +351,7 @@ def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,
             # swap entries
             if j in new_loc_RefSt:
                 continue
-            
+            print(f'Swapping indices:\n idx RefSt: {i}\n idx unmonitored: {j}')
             new_loc_RefSt[np.argwhere(new_loc_RefSt == i)[0][0]] = j
             new_loc_unmonitored[np.argwhere(new_loc_unmonitored==j)[0][0]] = i
             # compute new covariance matrix
@@ -364,6 +373,7 @@ def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,
             if mse_new < mse_comparison:
                 # skip this entry swapping
                 print(f'Improvement when swapping index RefSt {i} with unmonitored {j}\nCurrent {mse_comparison:.2f}\nNew {mse_new:.2f}')
+                print(f'New distribution: {sensor_placement.locations}')
                 mse_comparison = mse_new
                 break
             else:
@@ -394,8 +404,154 @@ def local_optimization_swap(dataset,n,n_refst,n_lcs,n_empty,s,var,solution_dist,
     print(f'Results after {count} swap attemps\nOriginal RefSt distribution: {loc_RefSt}\nNew RefSt distribution: {new_loc_RefSt}\nOriginal unmonitored distribution: {loc_unmonitored}\nNew unmonitored distribution: {new_loc_unmonitored}\nOriginal MSE: {mse_orig}\nNew MSE: {mse_new}')
            
     return [loc_LCS,np.sort(new_loc_RefSt),np.sort(new_loc_unmonitored)], mse_new
+#%%
 
+# =============================================================================
+# Plots
+# =============================================================================
             
+class Plots():
+    def __init__(self,save_path,figx=3.5,figy=2.5,fs_title=10,fs_label=10,fs_ticks=10,fs_legend=10,marker_size=3,dpi=300,use_grid=False,show_plots=False):
+        self.figx = figx
+        self.figy = figy
+        self.fs_title = fs_title
+        self.fs_label = fs_label
+        self.fs_ticks = fs_ticks
+        self.fs_legend = fs_legend
+        self.marker_size = marker_size
+        self.dpi = dpi
+        self.save_path = save_path
+        if show_plots:
+            self.backend = 'Qt5Agg'
+        else:
+            self.backend = 'Agg'
+        
+        print('Setting mpl rcparams')
+        
+        font = {'weight':'normal',
+                'size':str(self.fs_label),
+                }
+        
+        lines = {'markersize':self.marker_size}
+        
+        fig = {'figsize':[self.figx,self.figy],
+               'dpi':self.dpi
+               }
+        
+        ticks={'labelsize':self.fs_ticks
+            }
+        axes={'labelsize':self.fs_ticks,
+              'grid':False,
+              'titlesize':self.fs_title
+            }
+        if use_grid:
+            grid = {'alpha':0.5}
+            mpl.rc('grid',**grid)
+        
+        mathtext={'default':'regular'}
+        legend = {'fontsize':self.fs_legend}
+        
+        
+        
+        mpl.rc('font',**font)
+        mpl.rc('figure',**fig)
+        mpl.rc('xtick',**ticks)
+        mpl.rc('ytick',**ticks)
+        mpl.rc('axes',**axes)
+        mpl.rc('legend',**legend)
+        mpl.rc('mathtext',**mathtext)
+        mpl.rc('lines',**lines)
+        
+        mpl.use(self.backend)
+        
+    def heatmap_criteria_ratio(self,df_rmse_rankMax,df_rmse_Dopt,n,s,var,save_fig=False):
+        """
+        Heatmap image showing RMSE ratio between rankMax solutions and Doptimal solutions.
+        If the ratio is less than one then rankMax locations are better for reconstructing the signal.
+        
+        The image shows RMSE ratio for different number of RefSt: 0 to s-1
+        and different number of unmonitored locations: 0(Fully monitored network) to n-s (scarcely monitored network)
+        
+        The image is center to 1.0 (equal error) and ranges from 0.5 up to 1.5 times for comparison with other variance ratios
+        or network configurations.
+
+        Parameters
+        ----------
+        df_rmse_rankMax : pandas dataframe
+            rankMax RMSE
+        df_rmse_Dopt : pandas dataframe
+            Doptimal RMSE
+        n : int
+            netwrok size
+        s : int
+            sparsity level
+        var : float
+            variances ratio
+        save_fig : bool, optional
+            save generated figure. The default is False.
+
+        Returns
+        -------
+        fig : matplotlib figure
+            image of RMSE ratios
+
+        """
+        
+        df_rmse_ratio = df_rmse_rankMax.astype(float)/df_rmse_Dopt.astype(float)
+        # zero-valued ratio is might happen because df_rmse_Dopt diverges and not because df_rmse_rank is zero
+        df_rmse_ratio.replace(0,np.nan,inplace=True)
+        
+        min_val = df_rmse_ratio.to_numpy().min()
+        max_val = df_rmse_ratio.to_numpy().max()
+        print(f'Maximum ratio: {max_val:.2f}\nMinimum ratio: {min_val:.2f}')
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        crange = np.arange(0.5,1.6,0.1)
+        cmap = mpl.colormaps['summer'].resampled(64)#len(crange)
+        cmap.set_bad('k',0.8)
+        
+        # different colorbar normalizations choose one
+        bnorm = mpl.colors.BoundaryNorm(crange, cmap.N,extend='max')
+        cnorm = mpl.colors.CenteredNorm(vcenter=1.0,halfrange=0.5)
+        divnorm = mpl.colors.TwoSlopeNorm(vcenter=1.0,vmin=0.5,vmax=np.ceil(max_val))
+        
+        im = ax.imshow(df_rmse_ratio.T,cmap,
+                       norm=cnorm,interpolation=None)
+        cbar = fig.colorbar(im,ax=ax,
+                            orientation='horizontal',location='top',
+                            label=r'$RMSE_{RM}$ / $RMSE_{HJB}$',extend='both')
+        
+        
+        for (j,i),label in np.ndenumerate(df_rmse_ratio.T):
+            ax.text(i,j,f'{label:.2f}',ha='center',va='center',color='k',size=5)
+            
+
+        
+        
+        cbar.set_ticks(np.arange(crange[0],crange[-1]+0.25,0.25))
+        cbar.set_ticklabels([round(i,2) for i in cbar.get_ticks()])
+        
+        xrange = [i for i in df_rmse_ratio.T.columns]
+        ax.set_xticks(xrange)
+        ax.set_xticklabels(ax.get_xticks())
+        ax.set_xlabel('Number of\n reference stations')
+        
+        yrange = [int(i) for i in df_rmse_ratio.columns]
+        ax.set_yticks(yrange)
+        ax.set_yticklabels(ax.get_yticks())
+        ax.set_ylabel('Number of\n unmonitored locations')
+        
+        ax.set_aspect('auto')
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        if save_fig:
+            fname = self.save_path+f'RMSEratio_RefSt_vs_Unmonitored_r{s}_N{n}_var{var:.2e}.png'
+            fig.savefig(fname,dpi=300,format='png')
+        
+        return fig
+       
 #%%
 if __name__ == '__main__':
     abs_path = os.path.dirname(os.path.realpath(__file__))
@@ -406,9 +562,15 @@ if __name__ == '__main__':
     #exhaustive_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Results/Exhaustive_network/'
     
     # network paramteres
-    N = 18 #[18,71]
-    S = 5 #[5,50 if pollutant == 'O3' else 53]
+    N = 71 #[18,71]
     POLLUTANT = 'O3' #['O3','NO2']
+    
+    if N==71 and POLLUTANT == 'O3':
+        S = 50
+    elif N==71 and POLLUTANT == 'NO2':
+        S = 53
+    elif N==18 and POLLUTANT == 'O3':
+        S = 5
     
     n_refst_range = np.arange(0,S,1)
     n_empty_range = np.arange(0,N-S+1,1)
@@ -424,7 +586,7 @@ if __name__ == '__main__':
         criterion = 'rankMax' #['rankMax','D_optimal']
         
         print(f'Solving sensor placement problem for network:\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Algorithm: {criterion}\n Number of unmonitored locations ranging from {n_empty_range[0]} to {n_empty_range[-1]}')
-        input('Press Enter to continue...')
+        #input('Press Enter to continue...')
         for n_empty in n_empty_range:
             print(f'Solving sensor placement problem for network:\n Pollutant: {POLLUTANT}\n N: {N}\n Unmonitored: {n_empty}\n sparsity: {S}\n Algorithm: {criterion}\n Solving for every number of RefSt from 0 to {N - n_empty}')
             solve_sensor_placement(dataset,N,n_empty,S,results_path,criterion)
@@ -452,7 +614,12 @@ if __name__ == '__main__':
     # compute MSE using both criteria and exhaustive configurations forn given variance
     estimate = True
     if estimate:
-        var = 1e-2
+        var = 0e0
+        if var == 0.0:
+            var_Dopt = 1e-6
+        else:
+            var_Dopt = var
+        
         df_alphas = pd.read_csv(results_path+f'Criteria_comparison/Validation_results_{N}N_{S}r.csv',index_col=0)
         
         df_rmse_rankMax = pd.DataFrame()
@@ -461,30 +628,48 @@ if __name__ == '__main__':
         print(f'Estimating RMSE using both criteria solutions.\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Variances ratio: {var:.1e}\n Number of unmonitored locations ranges from {n_empty_range[0]} to {n_empty_range[-1]}\n Number of reference stations ranges from 0 to {S-1}\n The rest are LCS up to complete monitored locations')
         input('Press Enter to continue ...')
         for n_empty in n_empty_range:
+            print(f'{n_empty} unmonitored locations')
             df_rankMax = pd.DataFrame(data=None,index = n_refst_range,columns=[n_empty])
             df_Dopt = pd.DataFrame(data=None,index = n_refst_range,columns=[n_empty])
             for n_refst in n_refst_range:
+                print(f'{n_refst} reference stations')
                 # load rankMax and Dopt locations
                 alpha_reg = df_alphas.loc[n_refst,str(n_empty)]
+                
                 fname = results_path+f'Criteria_comparison/DiscreteLocations_rankMax_vs_p0_{N}N_r{S}_pEmpty{n_empty}_alpha{alpha_reg:.1e}.pkl'
                 with open(fname,'rb') as f:
                     rankMax_locations = pickle.load(f)
-                rankMax_locations = rankMax_locations[n_refst]
-        
-                fname = results_path+f'Criteria_comparison/DiscreteLocations_D_optimal_vs_p0_{N}N_r{S}_pEmpty{n_empty}_varZero{var:.1e}.pkl'
+                rankMax_locations_nrefst = rankMax_locations[n_refst]
+                
+                fname = results_path+f'Criteria_comparison/Weights_rankMax_vs_p0_{N}N_r{S}_pEmpty{n_empty}_alpha{alpha_reg:.1e}.pkl'
+                with open(fname,'rb') as f:
+                    rankMax_locations = pickle.load(f)
+                rankMax_weights_nrefst = rankMax_locations[n_refst]
+                
+                
+                fname = results_path+f'Criteria_comparison/DiscreteLocations_D_optimal_vs_p0_{N}N_r{S}_pEmpty{n_empty}_varZero{var_Dopt:.1e}.pkl'
                 with open(fname,'rb') as f:
                     Dopt_locations = pickle.load(f)
-                Dopt_locations = Dopt_locations[n_refst]
+                Dopt_locations_nrefst = Dopt_locations[n_refst]
+                
+                fname = results_path+f'Criteria_comparison/Weights_D_optimal_vs_p0_{N}N_r{S}_pEmpty{n_empty}_varZero{var_Dopt:.1e}.pkl'
+                with open(fname,'rb') as f:
+                    Dopt_locations = pickle.load(f)
+                Dopt_weights_nrefst = Dopt_locations[n_refst]
+                
         
                 # local optimization : swapping
+                print('Local optimization: swapping')
+                print('rankMax')
                 rankMax_locations_swap, rankMax_mse_swap = local_optimization_swap(dataset, N, n_refst, N-n_refst-n_empty, n_empty, 
-                                                                                   S, var, rankMax_locations)
+                                                                                   S, var, rankMax_locations_nrefst,rankMax_weights_nrefst)
                 
                 rankMax_error_swap = np.sqrt(rankMax_mse_swap)
                 
                 
+                print('Doptimal')
                 Dopt_locations_swap, Dopt_mse_swap = local_optimization_swap(dataset, N, n_refst, N-n_refst-n_empty, n_empty, 
-                                                                                   S, var, Dopt_locations)
+                                                                                   S, var, Dopt_locations_nrefst,Dopt_weights_nrefst)
                 Dopt_error_swap = np.sqrt(Dopt_mse_swap)
                 
                 df_rankMax.loc[n_refst,n_empty] = rankMax_error_swap
@@ -495,9 +680,24 @@ if __name__ == '__main__':
             
         
         
-        df_rmse_rankMax.to_csv(results_path+f'RMSE_rankMax_{N}N_{S}r.csv')
-        df_rmse_Dopt.to_csv(results_path+f'RMSE_Dopt_{N}N_{S}r.csv')
+        df_rmse_rankMax.to_csv(results_path+f'RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv')
+        df_rmse_Dopt.to_csv(results_path+f'RMSE_Dopt_{N}N_{S}r_var{var:.2e}.csv')
         sys.exit()
+        
+    show_plots = True
+    if show_plots:
+        # load files with RMSE for both criteria
+        var = 1e-4 #[1e0,1e-2,1e-4,1e-6]
+        print(f'Showing figures comparing both sensor placement criteria\n Network size: {N}\n sparsity: {S}\n variances ratio: {var:.2e}')
+        input('Press Enter to continue ...')
+        df_rmse_rankMax = pd.read_csv(results_path+f'Criteria_comparison/RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
+        df_rmse_Dopt = pd.read_csv(results_path+f'Criteria_comparison/RMSE_Dopt_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
+        
+        plots = Plots(save_path=results_path,marker_size=1,
+                            fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
+                            show_plots=True)
+        plots.heatmap_criteria_ratio(df_rmse_rankMax,df_rmse_Dopt,
+                                     N,S,var,save_fig=False)
 
     
    

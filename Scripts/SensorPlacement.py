@@ -501,8 +501,7 @@ class SensorPlacement:
         self.logdet_eps = np.log(np.linalg.det(Psi.T@np.diag(self.h_eps.value)@Psi))
         self.trace_zero = alpha*np.trace(Psi.T@np.diag(self.h_zero.value)@Psi)
     
-    def local_swapping(self,num_swaps = 100):
-        pass
+   
         
         
         
@@ -680,7 +679,10 @@ class SensorPlacement:
             refst_matrix = Theta_refst.T@Theta_refst
             
             Is = np.identity(self.r)
-            P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+            try:
+                P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+            except:
+                P = Is - refst_matrix@np.linalg.pinv(refst_matrix,hermitian=True,rcond=1e-10)
             
             rank1 = np.linalg.matrix_rank(Theta_lcs@P,tol=1e-10)
             rank2 = np.linalg.matrix_rank(P@Theta_lcs.T,tol=1e-10)

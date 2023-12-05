@@ -255,22 +255,20 @@ class randomPlacement():
         for idx in self.locations.keys():
             C_eps = self.C[idx][0]
             C_zero = self.C[idx][1]
-            
             Theta_eps = C_eps@Psi
             Theta_zero = C_zero@Psi
             
-            
-            Precision_matrix = (var_eps**(-1)*Theta_eps.T@Theta_eps) + (var_zero**(-1)*Theta_zero.T@Theta_zero)
+            if C_eps.shape[0] == 0:# no LCS
+                Precision_matrix = (self.var_zero**-1)*Theta_zero.T@Theta_zero
+            elif C_zero.shape[0] == 0:#no Ref.St.
+                Precision_matrix = (self.var_eps**-1)*Theta_eps.T@Theta_eps
+            else:
+                Precision_matrix = (var_eps**(-1)*Theta_eps.T@Theta_eps) + (var_zero**(-1)*Theta_zero.T@Theta_zero)
+                
             S = np.linalg.svd(Precision_matrix)[1]
-            rcond = np.linalg.cond(Precision_matrix)**-1
             rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
-            #exponent = np.floor(np.log10(np.abs(rcond)))
-           
+            Covariances[idx] = np.linalg.pinv(Precision_matrix,rcond_pinv)
             
-            Cov = np.linalg.pinv(Precision_matrix,rcond_pinv)
-           
-            
-            Covariances[idx] = Cov
         self.Covariances = Covariances
         
     def covariance_matrix_limit(self,Psi,var_eps,r):
@@ -301,21 +299,29 @@ class randomPlacement():
             Theta_zero = C_zero@Psi
             Theta_empty = C_empty@Psi
             
-            refst_matrix = Theta_zero.T@Theta_zero
-            
-            Is = np.identity(r)
-            P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
-            
-            S1 = np.linalg.svd(Theta_eps@P)[1]
-            S2 = np.linalg.svd(P@Theta_eps.T)[1]
-            
-            rcond1_pinv = rcond_pinv = (S1[-1]+S1[-2])/(2*S1[0])
-            rcond2_pinv = rcond_pinv = (S2[-1]+S2[-2])/(2*S2[0])
-            
-            
-            Cov = var_eps*np.linalg.pinv(Theta_eps@P,rcond=rcond1_pinv)@np.linalg.pinv(P@Theta_eps.T,rcond=rcond2_pinv)
-          
-            
+            if C_eps.shape[0] == 0:#no LCSs
+                Cov = np.zeros(shape=(r,r))
+            elif C_zero.shape[0] == 0:#no RefSt
+                Precision_matrix = (var_eps**-1)*Theta_eps.T@Theta_eps
+                S = np.linalg.svd(Precision_matrix)[1]
+                rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
+                Cov = np.linalg.pinv( Precision_matrix,rcond_pinv)
+            else: # compute covariance matrix using projector
+                refst_matrix = Theta_zero.T@Theta_zero
+                    
+                Is = np.identity(r)
+                P = Is - refst_matrix@np.linalg.pinv(refst_matrix)
+                  
+                S1 = np.linalg.svd(Theta_eps@P)[1]
+                S2 = np.linalg.svd(P@Theta_eps.T)[1]
+                    
+                rcond1_pinv = rcond_pinv = (S1[-1]+S1[-2])/(2*S1[0])
+                rcond2_pinv = rcond_pinv = (S2[-1]+S2[-2])/(2*S2[0])
+                    
+                    
+                Cov = var_eps*np.linalg.pinv(Theta_eps@P,rcond=rcond1_pinv)@np.linalg.pinv(P@Theta_eps.T,rcond=rcond2_pinv)
+                  
+                
             Covariances[idx] = Cov
         
             
