@@ -14,14 +14,21 @@ import numpy as np
 import math
 import warnings
 import pickle
-import sys
 
-import SensorPlacement as SP
+import argparse
+
 import DataSet as DS
 import LowRankBasis as LRB
-import compute_weights as CW
 import Estimation
-import Plots
+#%% Script inoput parameters
+parser = argparse.ArgumentParser(prog='Global_mminimum_search',
+                                 description='Exhaustive search over all possible combinations to find the global minimum sensors distributions',
+                                 epilog='---')
+parser.add_argument('-nr','--n_refst',help='Number of reference stations in the network',type=int,required=True)
+parser.add_argument('-ne','--n_empty',help='Number of unmonitored locations in the network',type=int,required=True)
+parser.add_argument('--estimate', help='Flag for computing RMSE for all possible combinations',action='store_true',default='True')
+args = parser.parse_args()
+
 #%% Exhaustive placement class
 
         
@@ -319,6 +326,45 @@ def load_dataset(pollutant,n,files_path):
     
     return dataset
 
+
+def exhaustive_loop(M,S,POLLUTANT,var):
+    # range of reference stations and unmonitored locations
+    
+    n_refst_range = np.arange(0,S,1)
+    n_empty_range = np.arange(0,N-S+1,1)
+    
+    print(f'Searching for minimum RMSE\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Variances ratio: {var:.1e}\n Number of unmonitored locations ranges from {n_empty_range[0]} to {n_empty_range[-1]}\n Number of reference stations ranges from 0 to {S-1}\n The rest are LCS up to complete monitored locations')
+    input('Press Enter to continue ...')
+    df_rmse_min = pd.DataFrame()
+    
+    for n_empty in n_empty_range:
+        print(f'{n_empty} unmonitored locations')
+        df_exhaustive_placement = pd.DataFrame(data=None,index = n_refst_range,columns=[n_empty])
+        for n_refst in n_refst_range:
+            n_lcs = N - n_refst - n_empty
+            print(f'{n_refst} reference stations\n{n_lcs} LCSs')
+            
+            # get all possible configurations
+            exhaustive_placement = ExhaustivePlacement(N, n_refst, n_lcs, n_empty)
+            exhaustive_placement.distribute()
+            exhaustive_placement.sort_locations()
+            
+            # estimate RMSE for all configurations
+            num_el_bins = 5000
+            num_files = int(np.ceil(exhaustive_placement.num_distributions/num_el_bins))
+            
+            min_rmse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
+                                                      N, n_refst, n_empty, 
+                                                      S, var,num_el_bins)
+            
+            df_exhaustive_placement.loc[n_refst,n_empty] = min_rmse
+            
+            
+        df_rmse_min = pd.concat((df_rmse_min,df_exhaustive_placement),axis=1)
+    
+    df_rmse_min.to_csv(results_path+f'RMSE_globalMin_{N}N_{S}r_var{var:.2e}.csv')
+    
+    return df_rmse_min
 #%%
 if __name__ == '__main__':
     abs_path = os.path.dirname(os.path.realpath(__file__))
@@ -338,42 +384,36 @@ if __name__ == '__main__':
     lowrank_basis.low_rank_decomposition(normalize=True)
     dataset.project_basis(lowrank_basis.Psi)
     
-    # range of reference stations and unmonitored locations
-    n_refst_range = np.arange(0,S,1)
-    n_empty_range = np.arange(0,N-S+1,1)
     
-    estimate = True
-    if estimate:
-        print(f'Searching for minimum RMSE\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Variances ratio: {var:.1e}\n Number of unmonitored locations ranges from {n_empty_range[0]} to {n_empty_range[-1]}\n Number of reference stations ranges from 0 to {S-1}\n The rest are LCS up to complete monitored locations')
-        input('Press Enter to continue ...')
-        df_rmse_min = pd.DataFrame()
+    
+    if args.estimate:
+        print(f'Searching for minimum RMSE\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Variances ratio: {var:.1e}')
+        df_rmse_min = pd.DataFrame(data=None,index=[args.n_refst],columns=[args.n_empty])
         
-        for n_empty in n_empty_range:
-            print(f'{n_empty} unmonitored locations')
-            df_exhaustive_placement = pd.DataFrame(data=None,index = n_refst_range,columns=[n_empty])
-            for n_refst in n_refst_range:
-                n_lcs = N - n_refst - n_empty
-                print(f'{n_refst} reference stations\n{n_lcs} LCSs')
-                
-                # get all possible configurations
-                exhaustive_placement = ExhaustivePlacement(N, n_refst, n_lcs, n_empty)
-                exhaustive_placement.distribute()
-                exhaustive_placement.sort_locations()
-                
-                # estimate RMSE for all configurations
-                num_el_bins = 5000
-                num_files = int(np.ceil(exhaustive_placement.num_distributions/num_el_bins))
-                
-                min_rmse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
-                                                          N, n_refst, n_empty, 
-                                                          S, var,num_el_bins)
-                
-                df_exhaustive_placement.loc[n_refst,n_empty] = min_rmse
-                
-                
-            df_rmse_min = pd.concat((df_rmse_min,df_exhaustive_placement),axis=1)
+        n_lcs = N - args.n_refst - args.n_empty
         
-        df_rmse_min.to_csv(results_path+f'RMSE_globalMin_{N}N_{S}r_var{var:.2e}.csv')
+        print(f'{args.n_empty} unmonitored locations')
+        print(f'{args.n_refst} reference stations\n{n_lcs} LCSs')
+        
+        # get all possible configurations
+        exhaustive_placement = ExhaustivePlacement(N, args.n_refst, n_lcs, args.n_empty)
+        exhaustive_placement.distribute()
+        exhaustive_placement.sort_locations()
+        
+        # estimate RMSE for all configurations
+        num_el_bins = 5000
+        num_files = int(np.ceil(exhaustive_placement.num_distributions/num_el_bins))
+        
+        min_rmse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
+                                                  N, args.n_refst, args.n_empty, 
+                                                  S, var,num_el_bins)
+        
+        df_rmse_min.loc[args.n_refst,args.n_empty] = min_rmse
+        print(f'Minimum RMSE found: {min_rmse}')
+        
+        
+        
+        df_rmse_min.to_csv(results_path+f'RMSE_globalMin_RefSt{args.n_refst}_Unmonitored{args.n_empty}_N{N}_{S}r_var{var:.2e}.csv')
     
         
            
