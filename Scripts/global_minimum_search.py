@@ -326,7 +326,7 @@ def load_dataset(pollutant,n,files_path):
     
     return dataset
 
-
+#%% loop
 def exhaustive_loop(M,S,POLLUTANT,var):
     # range of reference stations and unmonitored locations
     
@@ -365,6 +365,25 @@ def exhaustive_loop(M,S,POLLUTANT,var):
     df_rmse_min.to_csv(results_path+f'RMSE_globalMin_{N}N_{S}r_var{var:.2e}.csv')
     
     return df_rmse_min
+
+def load_globalMin_files(N,S,var,path):
+    n_refst_range = np.arange(0,S,1)
+    n_empty_range = np.arange(0,N-S+1,1)
+    
+    df_rmse_min = pd.DataFrame()
+    for n_empty in n_empty_range:
+        print(f'loading data for {n_empty} unmonitored locations')
+        df_refst = pd.DataFrame()
+        for n_refst in n_refst_range:
+            print(f'loading data for {n_refst} reference stations')
+            fname = path+f'RMSE_globalMin_Refst{n_refst}_Unmonitored{n_empty}_N{N}_{S}r_var{var:.2e}.csv'
+            df = pd.read_csv(fname,index_col=0)
+            df_refst = pd.concat((df_refst,df),axis=0)
+        df_rmse_min = pd.concat((df_rmse_min,df_refst),axis=1)
+    
+    return df_rmse_min
+            
+    
 #%%
 if __name__ == '__main__':
     abs_path = os.path.dirname(os.path.realpath(__file__))
@@ -415,5 +434,9 @@ if __name__ == '__main__':
         
         df_rmse_min.to_csv(results_path+f'RMSE_globalMin_RefSt{args.n_refst}_Unmonitored{args.n_empty}_N{N}_{S}r_var{var:.2e}.csv')
     
-        
+    else:
+        print(f'Generating data set for all possible combinations\nObtaining data files from: {results_path}')
+        df_rmse_min = load_globalMin_files(N,S,var,results_path)
+        fname = f'RMSE_globalMin_{POLLUTANT}_{N}N_{S}r_var{var:.2e}.csv'
+        df_rmse_min.to_csv(results_path+fname)
            

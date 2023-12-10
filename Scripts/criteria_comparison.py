@@ -464,7 +464,7 @@ class Plots():
         
         mpl.use(self.backend)
         
-    def heatmap_criteria_ratio(self,df_rmse_rankMax,df_rmse_Dopt,n,s,var,center_value=1.0,extreme_range=0.5,text_note_size=5,save_fig=False):
+    def heatmap_criteria_ratio(self,df_rmse_1,df_rmse_2,n,s,var,center_value=1.0,extreme_range=0.5,text_note_size=5,save_fig=False):
         """
         Heatmap image showing RMSE ratio between rankMax solutions and Doptimal solutions.
         If the ratio is less than one then rankMax locations are better for reconstructing the signal.
@@ -499,7 +499,7 @@ class Plots():
 
         """
         
-        df_rmse_ratio = df_rmse_rankMax.astype(float)/df_rmse_Dopt.astype(float)
+        df_rmse_ratio = df_rmse_1.astype(float)/df_rmse_2.astype(float)
         # zero-valued ratio is might happen because df_rmse_Dopt diverges and not because df_rmse_rank is zero
         df_rmse_ratio.replace(0,np.nan,inplace=True)
         
@@ -697,11 +697,12 @@ if __name__ == '__main__':
         input('Press Enter to continue ...')
         df_rmse_rankMax = pd.read_csv(results_path+f'Criteria_comparison/RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
         df_rmse_Dopt = pd.read_csv(results_path+f'Criteria_comparison/RMSE_Dopt_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
+        df_rmse_globalMin = pd.read_csv(results_path+f'Criteria_comparison/RMSE_globalMin_{POLLUTANT}_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
         
         plots = Plots(save_path=results_path,marker_size=1,
                             fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                             show_plots=True)
-        plots.heatmap_criteria_ratio(df_rmse_rankMax,df_rmse_Dopt,
+        plots.heatmap_criteria_ratio(df_rmse_globalMin,df_rmse_rankMax,
                                      N,S,var,
                                      center_value=0.5,extreme_range=0.5,
                                      text_note_size=5,save_fig=False)
