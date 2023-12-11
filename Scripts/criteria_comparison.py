@@ -464,7 +464,7 @@ class Plots():
         
         mpl.use(self.backend)
         
-    def heatmap_criteria_ratio(self,df_rmse_1,df_rmse_2,n,s,var,center_value=1.0,extreme_range=0.5,text_note_size=5,save_fig=False):
+    def heatmap_criteria_ratio(self,df_rmse_1,df_rmse_2,n,s,var,center_value=1.0,extreme_range=0.5,text_note_size=5,label1='RM',label2='HJB',save_fig=False):
         """
         Heatmap image showing RMSE ratio between rankMax solutions and Doptimal solutions.
         If the ratio is less than one then rankMax locations are better for reconstructing the signal.
@@ -514,9 +514,9 @@ class Plots():
         cmap.set_bad('k',0.8)
         
         # different colorbar normalizations choose one
-        bnorm = mpl.colors.BoundaryNorm(crange, cmap.N,extend='max')
+        #bnorm = mpl.colors.BoundaryNorm(crange, cmap.N,extend='max')
         cnorm = mpl.colors.CenteredNorm(vcenter=center_value,halfrange=extreme_range)
-        divnorm = mpl.colors.TwoSlopeNorm(vcenter=1.0,vmin=0.5,vmax=np.ceil(max_val))
+        #divnorm = mpl.colors.TwoSlopeNorm(vcenter=1.0,vmin=0.5,vmax=np.ceil(max_val))
         
         im = ax.imshow(df_rmse_ratio.T,cmap,
                        norm=cnorm,interpolation=None)
@@ -525,7 +525,7 @@ class Plots():
         
         cbar = fig.colorbar(im,ax=ax,
                             orientation='horizontal',location='top',
-                            label=r'$RMSE_{RM}$ / $RMSE_{HJB}$',extend=cbar_extension)
+                            label=f'RMSE$_{{{label1}}}$/RMSE$_{{{label2}}}$',extend=cbar_extension)
         
         if text_note_size != 0:
             for (j,i),label in np.ndenumerate(df_rmse_ratio.T):
@@ -538,7 +538,10 @@ class Plots():
         cbar.set_ticklabels([round(i,2) for i in cbar.get_ticks()])
         
         xrange = [i for i in df_rmse_ratio.T.columns]
-        ax.set_xticks(np.arange(xrange[0],xrange[-1],5))
+        if s<=10:
+            ax.set_xticks(np.arange(xrange[0],xrange[-1]+1,1))
+        else:
+            ax.set_xticks(np.arange(xrange[0],xrange[-1]+1,5))
         ax.set_xticklabels(ax.get_xticks())
         ax.set_xlabel('Number of\n reference stations')
         
@@ -552,7 +555,7 @@ class Plots():
         fig.tight_layout()
         
         if save_fig:
-            fname = self.save_path+f'RMSEratio_RefSt_vs_Unmonitored_r{s}_N{n}_var{var:.2e}.png'
+            fname = self.save_path+f'RMSEratio_{label1}-{label2}_RefSt_vs_Unmonitored_r{s}_N{n}_var{var:.2e}.png'
             fig.savefig(fname,dpi=300,format='png')
         
         return fig
@@ -686,7 +689,7 @@ if __name__ == '__main__':
         
         
         df_rmse_rankMax.to_csv(results_path+f'RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv')
-        df_rmse_Dopt.to_csv(results_path+f'RMSE_Dopt_{N}N_{S}r_var{var:.2e}.csv')
+        df_rmse_Dopt.to_csv(results_path+f'RMSE_Dopt_{N}N_{S}r_var{var:.2e}_computedVar{var_Dopt:.2e}.csv')
         sys.exit()
         
     show_plots = True
@@ -697,15 +700,25 @@ if __name__ == '__main__':
         input('Press Enter to continue ...')
         df_rmse_rankMax = pd.read_csv(results_path+f'Criteria_comparison/RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
         df_rmse_Dopt = pd.read_csv(results_path+f'Criteria_comparison/RMSE_Dopt_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
-        df_rmse_globalMin = pd.read_csv(results_path+f'Criteria_comparison/RMSE_globalMin_{POLLUTANT}_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
+        if N==18 and S==5:
+            df_rmse_global = pd.read_csv(results_path+f'Criteria_comparison/RMSE_globalMin_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
+        else:
+            warnings.warn(f'No global minimum file for a network of size N: {N} and sparsity: {S}')
+        
         
         plots = Plots(save_path=results_path,marker_size=1,
                             fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                             show_plots=True)
-        plots.heatmap_criteria_ratio(df_rmse_globalMin,df_rmse_rankMax,
+        label_rankMax = 'RM'
+        label_Dopt = 'HJB'
+        label_globalMin = 'min'
+        
+        plots.heatmap_criteria_ratio(df_rmse_rankMax,df_rmse_Dopt,
                                      N,S,var,
                                      center_value=0.5,extreme_range=0.5,
-                                     text_note_size=5,save_fig=False)
+                                     text_note_size=0,
+                                     label1=label_rankMax,label2=label_Dopt,
+                                     save_fig=False)
 
     
    
