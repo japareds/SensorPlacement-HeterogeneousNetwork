@@ -7,6 +7,7 @@ Created on Tue Nov  7 11:23:08 2023
 """
 
 import pandas as pd
+import pickle
 import numpy as np
 from urllib import request
 import shutil
@@ -107,8 +108,11 @@ class DataSet():
         self.df.set_index('PublishTime',drop=True,inplace=True)
         self.df.index.name = 'date'
         self.df.index = pd.to_datetime(self.df.index)
-        self.df.loc[self.df.O3=='-','O3'] = np.nan
-  
+        if self.pollutant == 'O3':
+            self.df.loc[self.df.O3=='-','O3'] = np.nan
+        elif self.pollutant == 'NO2':
+            self.df.loc[self.df.NO2=='-','NO2'] = np.nan
+            
     def save_dataset(self):
         self.df.to_csv(f'{self.path}{self.pollutant}_{self.year}.csv')
         print(f'{self.pollutant} pollutant for year {self.year} saved at {self.path}')
@@ -200,31 +204,45 @@ class DataSet():
         for y in years:
             print(f'Sorting year: {y}')
             df = self.dict_df[y]
-            df = df.groupby(by=['Station_number','date','O3'],as_index=False).mean()
+            df = df.groupby(by=['Station_number','date',f'{self.pollutant}'],as_index=False).mean()
             stations_id = np.sort(df.Station_number.unique())
             stations_id = stations_id[~np.isnan(stations_id)]
             
             i=0
-            df_station = pd.DataFrame(df.loc[df.Station_number==i,['O3','date']])
+            df_station = pd.DataFrame(df.loc[df.Station_number==i,[f'{self.pollutant}','date']])
             df_station.drop_duplicates(subset='date',inplace=True)
             df_station.set_index('date',inplace=True,drop=True)
             df_station.sort_index(inplace=True)
             df_station.index = pd.to_datetime(df_station.index)
-            df_station.columns = [f'{pollutant}_station_{i}']
+            df_station.columns = [f'{self.pollutant}_station_{i}']
             df_station = df_station.apply(pd.to_numeric)
             
             for i in stations_id[1:]:
-                df_ = pd.DataFrame(df.loc[df.Station_number==i,['O3','date']])
+                df_ = pd.DataFrame(df.loc[df.Station_number==i,[f'{self.pollutant}','date']])
                 df_.drop_duplicates(subset='date',inplace=True)
                 df_.set_index('date',inplace=True,drop=True)
                 df_.sort_index(inplace=True)
                 df_.index = pd.to_datetime(df_.index)
-                df_.columns = [f'{pollutant}_station_{i}']
+                df_.columns = [f'{self.pollutant}_station_{i}']
                 df_ = df_.apply(pd.to_numeric)
             
                 df_station = pd.concat([df_station,df_],axis=1)
             
             self.df[y] = df_station
+            
+    def getStations_coordinates(self,years,path):
+        
+        coordinates = self.coords_shared
+        self.coordinates_sorted = {el:[] for el in years}
+        for y in years:
+            df = self.dict_df[y]
+            stations_numbers = df.loc[:,'Station_number'].unique()
+            for i in stations_numbers:
+                self.coordinates_sorted[y].append(np.array([df.loc[df.Station_number == i].Latitude.unique(),df.loc[df.Station_number == i].Longitude.unique()]))
+            self.coordinates_sorted[y] = np.reshape(np.array(dataset.coordinates_sorted[y]),(len(dataset.coordinates_sorted[y]),2))
+        fname = f'{path}Coordinates_stations_{self.pollutant}_Taiwan_{years[0]}_{years[-1]}.csv'
+        with open(fname,'wb') as f:
+            pickle.dump(self.coordinates_sorted,f)
             
     def join_years(self,years):
         """
@@ -260,30 +278,33 @@ if __name__=='__main__':
     download_files = False
     if download_files:
         print(f'Files will be downloaded into {files_path}')
+        input('Press Enter to continue ...')
         for year in dict_urls:
             fname = files_path+f'dataset{year}.zip'
             kfile = File(dict_urls[year],fname)
             kfile.download_from_url()
+   
     preprocess_dataset = False
     if preprocess_dataset:
         print('Pre-processing dataset')
-        year = 2022
-        pollutant = 'O3'
+        year = 2018# [2022,2021,2020,2019,2018]
+        pollutant = 'NO2' #['O3', 'NO2']
         dataset = DataSet(year, files_path,pollutant)
         dataset.load_dataset()
         dataset.explore_multiple_locations()
         dataset.extract_columns()
-        dataset.save_dataset()
+        #dataset.save_dataset()
     
     join_datasets = True
     if join_datasets:
-        pollutant = 'O3'
+        pollutant = 'O3' #['O3', 'NO2']
         years = [2022,2021,2020,2019,2018]
         dataset = DataSet(years,files_path,pollutant)
         dataset.load_all_datasets(files_path, years)
         dataset.get_shared_coordinates(years)
         dataset.reduce_dataframe(years)
         dataset.sort_stations(years)
+        dataset.getStations_coordinates(years,files_path)
         dataset.join_years(years)
         
             

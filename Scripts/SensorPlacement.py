@@ -634,11 +634,12 @@ class SensorPlacement:
         else:
             Precision_matrix = (self.var_zero**-1)*Theta_refst.T@Theta_refst + (self.var_eps**-1)*Theta_lcs.T@Theta_lcs
         
-        S = np.linalg.svd(Precision_matrix)[1]
-        rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
-      
-        Cov = np.linalg.pinv( Precision_matrix,rcond_pinv)
-       
+        try:
+            S = np.linalg.svd(Precision_matrix)[1]
+            rcond_pinv = rcond_pinv = (S[-1]+S[-2])/(2*S[0])
+            Cov = np.linalg.pinv(Precision_matrix,rcond_pinv)
+        except:
+            Cov = np.linalg.pinv(Precision_matrix,hermitian=True)
       
         self.Cov = Cov
         

@@ -511,14 +511,14 @@ class Plots():
         ax = fig.add_subplot(111)
         crange = np.arange(center_value-extreme_range,center_value+extreme_range+0.1,0.1)
         cmap = mpl.colormaps['summer'].resampled(64)#len(crange)
-        cmap.set_bad('k',0.8)
+        cmap.set_bad('w',0.8)
         
         # different colorbar normalizations choose one
         #bnorm = mpl.colors.BoundaryNorm(crange, cmap.N,extend='max')
         cnorm = mpl.colors.CenteredNorm(vcenter=center_value,halfrange=extreme_range)
         #divnorm = mpl.colors.TwoSlopeNorm(vcenter=1.0,vmin=0.5,vmax=np.ceil(max_val))
         
-        im = ax.imshow(df_rmse_ratio.T,cmap,
+        im = ax.imshow(df_rmse_ratio.T.loc[:,1:],cmap,
                        norm=cnorm,interpolation=None)
         
         cbar_extension = 'both' if (center_value-extreme_range) != 0 else 'neither'
@@ -528,21 +528,22 @@ class Plots():
                             label=f'RMSE$_{{{label1}}}$/RMSE$_{{{label2}}}$',extend=cbar_extension)
         
         if text_note_size != 0:
-            for (j,i),label in np.ndenumerate(df_rmse_ratio.T):
-                ax.text(i,j,f'{label:.2f}',ha='center',va='center',color='k',size=text_note_size)
+            for (j,i),label in np.ndenumerate(df_rmse_ratio.T.loc[:,1:]):
+                if np.isnan(label):
+                    ax.text(i,j,'-',ha='center',va='center',color='k',size=text_note_size)
+                else:
+                    ax.text(i,j,f'{label:.2f}',ha='center',va='center',color='k',size=text_note_size)
             
-
-        
         
         cbar.set_ticks(np.arange(center_value-extreme_range,center_value+extreme_range+0.25,0.25))
         cbar.set_ticklabels([round(i,2) for i in cbar.get_ticks()])
         
-        xrange = [i for i in df_rmse_ratio.T.columns]
+        xrange = [i for i in df_rmse_ratio.T]
         if s<=10:
-            ax.set_xticks(np.arange(xrange[0],xrange[-1]+1,1))
+            ax.set_xticks(np.arange(xrange[0],xrange[-1],1))
         else:
-            ax.set_xticks(np.arange(xrange[0],xrange[-1]+1,5))
-        ax.set_xticklabels(ax.get_xticks())
+            ax.set_xticks(np.arange(xrange[0],xrange[-1],5))
+        ax.set_xticklabels([i+1 for i in ax.get_xticks()])
         ax.set_xlabel('Number of\n reference stations')
         
         yrange = [int(i) for i in df_rmse_ratio.columns]
@@ -559,6 +560,46 @@ class Plots():
             fig.savefig(fname,dpi=300,format='png')
         
         return fig
+    
+    
+    def binary_criteria_selection(self,df_rmse_1,df_rmse_2,n,s,var,label1='RM',label2='HJB',save_fig=False):
+        df_rmse_ratio = df_rmse_1.astype(float)/df_rmse_2.astype(float)
+        # zero-valued ratio is might happen because df_rmse_Dopt diverges and not because df_rmse_rank is zero
+        df_selection = df_rmse_ratio.T <= 1.0
+        df_selection[df_rmse_ratio.T == 0.0] = -1
+        df_selection.replace(-1,np.nan,inplace=True)
+        df_rmse_ratio.replace(0,np.nan,inplace=True)
+    
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        cmap = mpl.colormaps['cividis_r'].resampled(64)#len(crange)
+        cmap.set_bad('w',0.8)
+        
+        im = ax.imshow(df_selection.loc[:,1:].astype(float),cmap,
+                       interpolation=None)
+        
+        xrange = [i for i in df_selection.columns]
+        ax.set_xticks(np.concatenate(([0],np.arange(4,xrange[-1],5))))
+        ax.set_xticklabels([i+1 for i in ax.get_xticks()])
+        ax.set_xlabel('Number of\n reference stations')
+        
+        yrange = [int(i) for i in df_rmse_ratio.columns]
+        ax.set_yticks(np.arange(yrange[0],yrange[-1],5))
+        ax.set_yticklabels(ax.get_yticks())
+        ax.set_ylabel('Number of\n unmonitored locations')
+        
+        ax.set_aspect('auto')
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+        
+        if save_fig:
+            fname = self.save_path+f'CriteriaSelection_{label1}-{label2}_RefSt_vs_Unmonitored_r{s}_N{n}_var{var:.2e}.png'
+            fig.savefig(fname,dpi=300,format='png')
+        
+        return fig
+       
+        
        
 #%%
 if __name__ == '__main__':
@@ -570,7 +611,7 @@ if __name__ == '__main__':
     #exhaustive_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Results/Exhaustive_network/'
     
     # network paramteres
-    N = 18 #[18,71]
+    N = 71 #[18,71]
     POLLUTANT = 'O3' #['O3','NO2']
     
     if N==71 and POLLUTANT == 'O3':
@@ -622,7 +663,7 @@ if __name__ == '__main__':
     # compute MSE using both criteria and exhaustive configurations forn given variance
     estimate = False
     if estimate:
-        var = 0e0
+        var = 1e-2
         if var == 0.0:
             var_Dopt = 1e-6
         else:
@@ -665,7 +706,6 @@ if __name__ == '__main__':
                     Dopt_locations = pickle.load(f)
                 Dopt_weights_nrefst = Dopt_locations[n_refst]
                 
-        
                 # local optimization : swapping
                 print('Local optimization: swapping')
                 print('rankMax')
@@ -695,11 +735,16 @@ if __name__ == '__main__':
     show_plots = True
     if show_plots:
         # load files with RMSE for both criteria
-        var = 0e0 #[1e0,1e-2,1e-4,1e-6]
+        var = 1e-2 #[1e0,1e-2,1e-4,1e-6]
+        if var == 0.0:
+            var_Dopt = 1e-6
+        else:
+            var_Dopt = var
+        
         print(f'Showing figures comparing both sensor placement criteria\n Network size: {N}\n sparsity: {S}\n variances ratio: {var:.2e}')
         input('Press Enter to continue ...')
         df_rmse_rankMax = pd.read_csv(results_path+f'Criteria_comparison/RMSE_rankMax_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
-        df_rmse_Dopt = pd.read_csv(results_path+f'Criteria_comparison/RMSE_Dopt_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
+        df_rmse_Dopt = pd.read_csv(results_path+f'Criteria_comparison/RMSE_Dopt_{N}N_{S}r_var{var:.2e}_computedVar{var_Dopt:.2e}.csv',index_col=0)
         if N==18 and S==5:
             df_rmse_global = pd.read_csv(results_path+f'Criteria_comparison/RMSE_globalMin_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
         else:
@@ -709,16 +754,24 @@ if __name__ == '__main__':
         plots = Plots(save_path=results_path,marker_size=1,
                             fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                             show_plots=True)
-        label_rankMax = 'RM'
+        label_rankMax = 'rankMax'
         label_Dopt = 'HJB'
-        label_globalMin = 'min'
+        label_globalMin = 'optimal'
         
-        plots.heatmap_criteria_ratio(df_rmse_rankMax,df_rmse_Dopt,
-                                     N,S,var,
-                                     center_value=0.5,extreme_range=0.5,
-                                     text_note_size=0,
-                                     label1=label_rankMax,label2=label_Dopt,
-                                     save_fig=False)
+        try:
+            plots.heatmap_criteria_ratio(df_rmse_global,df_rmse_rankMax,
+                                         N,S,var,
+                                         center_value=0.5,extreme_range=0.5,
+                                         text_note_size=5,
+                                         label1=label_globalMin,label2=label_rankMax,
+                                         save_fig=False)
+        except:
+            print(f'No optimal computation for N: {N} and S: {S}')
+            
+        plots.binary_criteria_selection(df_rmse_rankMax,df_rmse_Dopt,
+                                        N,S,var,
+                                        label1=label_rankMax,label2=label_Dopt,
+                                        save_fig=False)
 
     
    
