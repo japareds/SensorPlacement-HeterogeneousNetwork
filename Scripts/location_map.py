@@ -54,7 +54,7 @@ def get_locations(files_path,pollutant):
     return coordinates
     
 #%% dsitributions
-def get_criteria_distributions(n,s,n_refst,n_empty,alpha_reg,var):
+def get_criteria_distributions(n,s,n_refst,n_empty,alpha_reg,var,var_Dopt):
     
     print(f'Loading criteria distributions for solving sensor placement problem.\n N: {n}\n s: {s}\n refst: {n_refst}\n unmonitored: {n_empty}\n var for HJB: {var:.2e}')
     
@@ -70,26 +70,32 @@ def get_criteria_distributions(n,s,n_refst,n_empty,alpha_reg,var):
     rankMax_weights_nrefst = rankMax_locations[n_refst]
     
     # load Doptimal locations and weights distribution
-    fname = results_path+f'Criteria_comparison/DiscreteLocations_D_optimal_vs_p0_{n}N_r{s}_pEmpty{n_empty}_varZero{var:.1e}.pkl'
+    fname = results_path+f'Criteria_comparison/DiscreteLocations_D_optimal_vs_p0_{n}N_r{s}_pEmpty{n_empty}_varZero{var_Dopt:.1e}.pkl'
     with open(fname,'rb') as f:
         Dopt_locations = pickle.load(f)
     Dopt_locations_nrefst = Dopt_locations[n_refst]
     
-    fname = results_path+f'Criteria_comparison/Weights_D_optimal_vs_p0_{n}N_r{s}_pEmpty{n_empty}_varZero{var:.1e}.pkl'
+    fname = results_path+f'Criteria_comparison/Weights_D_optimal_vs_p0_{n}N_r{s}_pEmpty{n_empty}_varZero{var_Dopt:.1e}.pkl'
     with open(fname,'rb') as f:
         Dopt_locations = pickle.load(f)
     Dopt_weights_nrefst = Dopt_locations[n_refst]
     
     if Dopt_weights_nrefst[0].sum()== 0.0 and Dopt_weights_nrefst[1].sum()==0.0:
         warnings.warn(f'Doptimal failure\n var: {var:.2e}\n n: {n}\n refst: {n_refst}\n unmonitored: {n_empty}')
+        
+    # load optimal locations
+    fname = results_path+f'Criteria_comparison/DiscreteLocations_globalMin_RefSt{n_refst}_Unmonitored{n_empty}_N{n}_{s}r_var{var:.2e}.pkl'
+    with open(fname,'rb') as f:
+        optimal_locations = pickle.load(f)
     
-    return rankMax_locations_nrefst, Dopt_locations_nrefst
+    return rankMax_locations_nrefst, Dopt_locations_nrefst, optimal_locations
 
 def get_criteria_rmse(n,s,var,var_Dopt,n_refst,n_empty):
     
     print(f'Loading RMSE obtained by rankMax , HJB and optimal (if exists)\n N: {n}\n s: {s}\n var: {var:.2e}\n refst: {n_refst}\n unmonitored: {n_empty}')
     df_rmse_rankMax = pd.read_csv(results_path+f'Criteria_comparison/RMSE_rankMax_{n}N_{s}r_var{var:.2e}.csv',index_col=0)
     df_rmse_Dopt = pd.read_csv(results_path+f'Criteria_comparison/RMSE_Dopt_{n}N_{s}r_var{var:.2e}_computedVar{var_Dopt:.2e}.csv',index_col=0)
+    
     if var == 0.0:
         df_rmse_optimal = pd.read_csv(results_path+f'Criteria_comparison/RMSE_globalMin_{N}N_{S}r_var{var:.2e}.csv',index_col=0)
         rmse_optimal = df_rmse_optimal.loc[n_refst,str(n_empty)]
@@ -192,16 +198,17 @@ class Plots():
         
         gdf_empty.plot(ax=taiwan_map, marker='o', color='k', markersize=5,label=f'{n_empty} unmonitored')
         gdf_lcs.plot(ax=taiwan_map, marker='o', color='orange', markersize=5,label=f'{n-n_refst-n_empty} LCSs')
-        gdf_refst.plot(ax=taiwan_map, marker='o', color='#2e86c1', markersize=5,label=f'{n_refst} Ref.St.')
+        gdf_refst.plot(ax=taiwan_map, marker='o', color='#943126', markersize=5,label=f'{n_refst} Ref.St.')
         
-        ax.text(np.floor(df['Longitude'].min()),np.ceil(df['Latitude'].max()),f'RMSE = {RMSE:.2f} $(\mu g/m^3)$',size=text_size)
+        ax.text(119.8,25.5,f'RMSE = {RMSE:.2f} $(\mu g/m^3)$',size=text_size)
         
-        ax.set_xlim(np.floor(df['Longitude'].min())-0.5,np.ceil(df['Longitude'].max())+0.5)
-        ax.set_ylim(np.floor(df['Latitude'].min())-0.5,np.ceil(df['Latitude'].max())+0.5)
+        ax.set_xlim(119.7,122.2)
+        ax.set_ylim(21.5,26)
         
         ax.set_xlabel('Longitude (degrees)')
         ax.set_ylabel('Latitude (degrees)')
-        ax.legend(loc='upper center',ncol=3,bbox_to_anchor=(0.5, 1.15),framealpha=1)
+        #ax.legend(loc='upper center',ncol=3,bbox_to_anchor=(0.5, 1.15),framealpha=1)
+        ax.legend(loc='upper center',ncol=1,framealpha=1,bbox_to_anchor=(0.5,1.25))
         ax.tick_params(axis='both', which='major')
         fig.tight_layout()
         
@@ -224,10 +231,10 @@ if __name__ == '__main__':
     # network paramteres
     N = 18
     S = 5
-    YEAR = 2021
+    YEAR = 2018
     POLLUTANT = 'O3'
-    n_refst = 3
-    n_empty = 10
+    n_refst = 4
+    n_empty = 8
     
     # get reduced dataset and respective locations
     dataset = load_dataset(files_path,N,POLLUTANT)
@@ -244,7 +251,7 @@ if __name__ == '__main__':
     df_alphas = pd.read_csv(results_path+f'Criteria_comparison/Validation_results_{N}N_{S}r.csv',index_col=0)
     alpha_reg = df_alphas.loc[n_refst,str(n_empty)]
     
-    rankMax_locations, Dopt_locations = get_criteria_distributions(N,S,n_refst,n_empty,alpha_reg,var_Dopt)
+    rankMax_locations, Dopt_locations, optimal_locations = get_criteria_distributions(N,S,n_refst,n_empty,alpha_reg,var,var_Dopt)
     rmse_rankMax, rmse_Dopt, rmse_optimal = get_criteria_rmse(N, S, var, var_Dopt, n_refst, n_empty)
     
     
@@ -259,9 +266,11 @@ if __name__ == '__main__':
     fig_Dopt = plots.geographical_network_visualization(coordinates,Dopt_locations,'HJB',rmse_Dopt,
                                              N,n_refst,n_empty,S,var,
                                              text_size=5,save_fig=False)
+     
+    fig_rankMax = plots.geographical_network_visualization(coordinates,optimal_locations,'Optimal',rmse_optimal,
+                                             N,n_refst,n_empty,S,var,
+                                             text_size=5,save_fig=False)
     
-   
-   
     
     
     
