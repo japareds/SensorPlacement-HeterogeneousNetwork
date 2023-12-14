@@ -64,7 +64,7 @@ def load_dataset(files_path,n,pollutant):
 
 def solve_sensor_placement(dataset,n,n_empty,s,results_path,criterion='rankMax'):
     alphas = np.concatenate((-np.logspace(-2,2,5),np.logspace(-2,2,5)))
-    variances = variances = np.concatenate(([0.0],np.logspace(-6,0,4)))
+    variances =  [1e-1]#np.concatenate(([0.0],np.logspace(-6,0,4)))
     var_lcs = 1e0
     if criterion == 'rankMax':
         var_refst = 0
@@ -502,6 +502,7 @@ class Plots():
         df_rmse_ratio = df_rmse_1.astype(float)/df_rmse_2.astype(float)
         # zero-valued ratio is might happen because df_rmse_Dopt diverges and not because df_rmse_rank is zero
         df_rmse_ratio.replace(0,np.nan,inplace=True)
+        df_rmse_ratio.columns = [n - int(i) for i in df_rmse_ratio.columns]
         
         min_val = df_rmse_ratio.to_numpy().min()
         max_val = df_rmse_ratio.to_numpy().max()
@@ -546,10 +547,11 @@ class Plots():
         ax.set_xticklabels([i+1 for i in ax.get_xticks()])
         ax.set_xlabel('Number of\n reference stations')
         
+        
         yrange = [int(i) for i in df_rmse_ratio.columns]
-        ax.set_yticks(np.arange(yrange[0],yrange[-1],5))
-        ax.set_yticklabels(ax.get_yticks())
-        ax.set_ylabel('Number of\n unmonitored locations')
+        ax.set_yticks([n - i for i in np.arange(yrange[-1],yrange[0],5)])
+        ax.set_yticklabels([n - i for i in ax.get_yticks()])
+        ax.set_ylabel('Total number of sensors')
         
         ax.set_aspect('auto')
         ax.tick_params(axis='both', which='major')
@@ -564,19 +566,24 @@ class Plots():
     
     def binary_criteria_selection(self,df_rmse_1,df_rmse_2,n,s,var,label1='RM',label2='HJB',save_fig=False):
         df_rmse_ratio = df_rmse_1.astype(float)/df_rmse_2.astype(float)
-        # zero-valued ratio is might happen because df_rmse_Dopt diverges and not because df_rmse_rank is zero
-        df_selection = df_rmse_ratio.T <= 1.0
-        df_selection[df_rmse_ratio.T == 0.0] = -1
-        df_selection.replace(-1,np.nan,inplace=True)
-        df_rmse_ratio.replace(0,np.nan,inplace=True)
+        
+        df_selection = df_rmse_ratio.T < 0.88 if var == 1e-1 else df_rmse_ratio.T.round(decimals=4) < 1
+        
+        # add it in case of replacing nan
+        #df_selection[df_rmse_ratio.T == 0.0] = -1
+        #df_selection.replace(-1,np.nan,inplace=True)
+        #df_rmse_ratio.replace(0,np.nan,inplace=True)
+        
+        df_selection.index = [n - int(i) for i in df_selection.index]
     
         
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        cmap = mpl.colormaps['cividis_r'].resampled(64)#len(crange)
-        cmap.set_bad('w',0.8)
+        cmap = mpl.colormaps['cividis_r'].resampled(128)#len(crange)
+        trunc_cmap = mpl.colors.LinearSegmentedColormap.from_list('trunc_cmap',cmap(np.linspace(0.2,0.99,100)),N=2)
+        trunc_cmap.set_bad('w',0.8)
         
-        im = ax.imshow(df_selection.loc[:,1:].astype(float),cmap,
+        im = ax.imshow(df_selection.loc[:,1:].astype(float),trunc_cmap,
                        interpolation=None)
         
         xrange = [i for i in df_selection.columns]
@@ -584,10 +591,15 @@ class Plots():
         ax.set_xticklabels([i+1 for i in ax.get_xticks()])
         ax.set_xlabel('Number of\n reference stations')
         
-        yrange = [int(i) for i in df_rmse_ratio.columns]
-        ax.set_yticks(np.arange(yrange[0],yrange[-1],5))
-        ax.set_yticklabels(ax.get_yticks())
-        ax.set_ylabel('Number of\n unmonitored locations')
+        yrange = [int(i) for i in df_selection.index]
+        ax.set_yticks([n - i for i in np.arange(yrange[-1],yrange[0],5)])
+        ax.set_yticklabels([n - i for i in ax.get_yticks()])
+        ax.set_ylabel('Total number of sensors')
+        
+        # yrange = [int(i) for i in df_rmse_ratio.columns]
+        # ax.set_yticks(np.arange(yrange[0],yrange[-1],5))
+        # ax.set_yticklabels(ax.get_yticks())
+        # ax.set_ylabel('Number of\n unmonitored locations')
         
         ax.set_aspect('auto')
         ax.tick_params(axis='both', which='major')
@@ -611,7 +623,7 @@ if __name__ == '__main__':
     #exhaustive_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Results/Exhaustive_network/'
     
     # network paramteres
-    N = 71 #[18,71]
+    N = 18 #[18,71]
     POLLUTANT = 'O3' #['O3','NO2']
     
     if N==71 and POLLUTANT == 'O3':
@@ -632,10 +644,10 @@ if __name__ == '__main__':
     # solve convex sensor placement problem
     solve_problem = False
     if solve_problem:
-        criterion = 'rankMax' #['rankMax','D_optimal']
+        criterion = 'D_optimal' #['rankMax','D_optimal']
         
         print(f'Solving sensor placement problem for network:\n Pollutant: {POLLUTANT}\n N: {N}\n sparsity: {S}\n Algorithm: {criterion}\n Number of unmonitored locations ranging from {n_empty_range[0]} to {n_empty_range[-1]}')
-        #input('Press Enter to continue...')
+        input('Press Enter to continue...')
         for n_empty in n_empty_range:
             print(f'Solving sensor placement problem for network:\n Pollutant: {POLLUTANT}\n N: {N}\n Unmonitored: {n_empty}\n sparsity: {S}\n Algorithm: {criterion}\n Solving for every number of RefSt from 0 to {N - n_empty}')
             solve_sensor_placement(dataset,N,n_empty,S,results_path,criterion)
@@ -663,7 +675,7 @@ if __name__ == '__main__':
     # compute MSE using both criteria and exhaustive configurations forn given variance
     estimate = False
     if estimate:
-        var = 1e-2
+        var = 1e-1
         if var == 0.0:
             var_Dopt = 1e-6
         else:
@@ -735,7 +747,7 @@ if __name__ == '__main__':
     show_plots = True
     if show_plots:
         # load files with RMSE for both criteria
-        var = 1e-2 #[1e0,1e-2,1e-4,1e-6]
+        var = 0.0 #[1e0,1e-2,1e-4,1e-6]
         if var == 0.0:
             var_Dopt = 1e-6
         else:
@@ -759,11 +771,11 @@ if __name__ == '__main__':
         label_globalMin = 'optimal'
         
         try:
-            plots.heatmap_criteria_ratio(df_rmse_global,df_rmse_rankMax,
+            plots.heatmap_criteria_ratio(df_rmse_global,df_rmse_Dopt,
                                          N,S,var,
                                          center_value=0.5,extreme_range=0.5,
                                          text_note_size=5,
-                                         label1=label_globalMin,label2=label_rankMax,
+                                         label1=label_globalMin,label2=label_Dopt,
                                          save_fig=False)
         except:
             print(f'No optimal computation for N: {N} and S: {S}')

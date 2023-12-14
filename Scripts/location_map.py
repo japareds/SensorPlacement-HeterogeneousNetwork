@@ -261,15 +261,15 @@ if __name__ == '__main__':
                         show_plots=True)
     fig_rankMax = plots.geographical_network_visualization(coordinates,rankMax_locations,'rankMax',rmse_rankMax,
                                              N,n_refst,n_empty,S,var,
-                                             text_size=5,save_fig=False)
+                                             text_size=5,save_fig=True)
     
     fig_Dopt = plots.geographical_network_visualization(coordinates,Dopt_locations,'HJB',rmse_Dopt,
                                              N,n_refst,n_empty,S,var,
-                                             text_size=5,save_fig=False)
+                                             text_size=5,save_fig=True)
      
     fig_rankMax = plots.geographical_network_visualization(coordinates,optimal_locations,'Optimal',rmse_optimal,
                                              N,n_refst,n_empty,S,var,
-                                             text_size=5,save_fig=False)
+                                             text_size=5,save_fig=True)
     
     
     

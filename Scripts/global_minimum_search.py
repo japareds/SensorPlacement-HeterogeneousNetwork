@@ -248,6 +248,7 @@ def compute_minimum_analytical_rmse(dataset,lowrank_basis,exhaustive_placement,n
     """
     it = 0
     min_mse = []
+    locations_min = []
     
     for item in chunks(exhaustive_placement.locations, num_el_chunk): # split dict into chunks for memory
         new_locs = {el:i for el,i in zip(range(num_el_chunk),item.values())}    
@@ -278,11 +279,17 @@ def compute_minimum_analytical_rmse(dataset,lowrank_basis,exhaustive_placement,n
         
         # keep minimum error
         min_mse.append(np.min([i for i in estimation_exhaustive.mse_analytical_full.values()]))
+        # keep distribution of minimum error
+        idx_min = np.argmin([i for i in estimation_exhaustive.mse_analytical_full.values()])
+        locations_min.append(new_locs[idx_min])
         
         
         it+=1
-        
-    return np.sqrt(np.min(min_mse))
+    
+    min_rmse = np.sqrt(np.min(min_mse))
+    idx_min_rmse = np.argmin(min_mse)
+    location_min_rmse = locations_min[idx_min_rmse]
+    return  min_rmse, location_min_rmse
 
 def join_exhaustive_placement_iterations(path_files,n_refst,s,var,n_it,locations='Unmonitored'):
     
@@ -423,16 +430,19 @@ if __name__ == '__main__':
         num_el_bins = 5000
         num_files = int(np.ceil(exhaustive_placement.num_distributions/num_el_bins))
         
-        min_rmse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
+        min_rmse, location_min_rmse = compute_minimum_analytical_rmse(dataset, lowrank_basis, exhaustive_placement, 
                                                   N, args.n_refst, args.n_empty, 
                                                   S, var,num_el_bins)
         
         df_rmse_min.loc[args.n_refst,args.n_empty] = min_rmse
         print(f'Minimum RMSE found: {min_rmse}')
-        
-        
+        print(f'Optimal distribution: {location_min_rmse}')
         
         df_rmse_min.to_csv(results_path+f'RMSE_globalMin_RefSt{args.n_refst}_Unmonitored{args.n_empty}_N{N}_{S}r_var{var:.2e}.csv')
+        
+        fname = f'{results_path}DiscreteLocations_globalMin_RefSt{args.n_refst}_Unmonitored{args.n_empty}_N{N}_{S}r_var{var:.2e}.pkl'
+        with open(fname,'wb') as f:
+            pickle.dump(location_min_rmse,f)
     
     else:
         print(f'Generating data set for all possible combinations\nObtaining data files from: {results_path}')

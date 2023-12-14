@@ -1029,6 +1029,7 @@ class Plots():
         xrange = np.arange(1,len(errors_sorted_zero)+1,1)
         rank_loc = np.argwhere(locations_sorted_zero == idx_rankMax)[0][0]
         
+        
         try:
             Dopt_loc = np.argwhere(locations_sorted_zero == idx_Dopt)[0][0]
         except:
@@ -1073,6 +1074,42 @@ class Plots():
         if save_fig:
             fname = f'{self.save_path}RMSE_rankingComparison_{n_refst}RefSt_var{var}_varDopt{var_Dopt}_r{s}.png'
             fig.savefig(fname,dpi=300,format='png')
+            
+    def histogram_error(self,n,s,n_refst,n_empty,var,var_Dopt,errors_sorted,rmse_Dopt,rmse_rankMax,save_fig):
+        bins = np.arange(0,1e1+1e-1,1e-1)
+        rmse_mean = errors_sorted.mean()
+        rmse_std = errors_sorted.std()
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.hist(errors_sorted,bins,density=True,color='#148f77')
+        ax.vlines(x=rmse_mean,ymin=0.0,ymax = 3,color='#b03a2e',label='mean RMSE',linestyles='dashed',linewidth=1)
+        ax.axvspan(xmin=rmse_mean - rmse_std, xmax = rmse_mean + rmse_std,ymin=0.0,ymax=3,color='#cb4335',alpha=0.2)
+        ax.vlines(x=rmse_rankMax,ymin=0.0,ymax = 3,color='orange',label='rankMax',linestyles='dashed',linewidth=1)
+        if rmse_Dopt !=np.inf:
+            ax.vlines(x=rmse_Dopt,ymin=0.0,ymax = 3,color='k',label='HJB',linestyles='dashed',linewidth=1)
+        
+        ax.grid(False)
+        yrange = np.arange(0.,3+0.5,0.5)
+        ax.set_yticks(yrange)
+        ax.set_yticklabels([np.round(i,1) for i in ax.get_yticks()])
+        ax.set_ylabel('Probability density')
+        ax.set_ylim(0,3)
+        
+        xrange = np.arange(0,10+0.5,0.5)
+        ax.set_xticks(xrange)
+        ax.set_xticklabels([np.round(i,2) for i in ax.get_xticks()],rotation=45)
+        ax.set_xlabel('RMSE ($\mu g/m^{3}$)')
+        ax.set_xlim(0,10)
+        
+        ax.legend(loc='upper right',ncol=1,framealpha=1)
+        ax.tick_params(axis='both', which='major')
+        fig.tight_layout()
+
+        if save_fig:
+            fname = f'{self.save_path}RMSE_histogram_N{n}_{n_refst}RefSt_Empty{n_empty}_r{s}_var{var}_varDopt{var_Dopt}.png'
+            fig.savefig(fname,dpi=300,format='png')
+
         
 #%%
 if __name__ == '__main__':
@@ -1083,8 +1120,8 @@ if __name__ == '__main__':
     
     # network paramteres
     n = 18
-    n_refst = 1
-    n_lcs = 4
+    n_refst = 3
+    n_lcs = 2
     n_empty = 13
     s = 5#n_refst + n_lcs
     
@@ -1224,11 +1261,13 @@ if __name__ == '__main__':
                            fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                            show_plots=True)
         
+        # ranking plot
         plots.ranking_error_comparison(errors_sorted_zero,locations_sorted_zero,errors_sorted,
-                                       Dopt_error_swap,var_Dopt,idx_rankMax,idx_Dopt,n_refst,s,save_fig=True)
+                                       Dopt_error_swap,var_Dopt,idx_rankMax,idx_Dopt,n_refst,s,save_fig=False)
        
-        
-            
+        # histogram plot
+        plots.histogram_error(n, s, n_refst, n_empty,var,var_Dopt,
+                              errors_sorted_zero,Dopt_error_swap,rankMax_error_swap,save_fig=False)
  
   
     
