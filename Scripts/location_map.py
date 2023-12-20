@@ -168,7 +168,7 @@ class Plots():
         
         mpl.use(self.backend)
 
-    def geographical_network_visualization(self,coordinates,criteria_location,criterion,RMSE,n,n_refst,n_empty,s,var,text_size,save_fig=False):
+    def geographical_network_visualization(self,coordinates,criteria_location,criterion,RMSE,n,n_refst,n_empty,s,var,text_size,show_label=False,show_legend=False,save_fig=False):
         
         coords_lcs = coordinates[criteria_location[0]]
         coords_refst = coordinates[criteria_location[1]]
@@ -200,22 +200,34 @@ class Plots():
         gdf_lcs.plot(ax=taiwan_map, marker='o', color='orange', markersize=5,label=f'{n-n_refst-n_empty} LCSs')
         gdf_refst.plot(ax=taiwan_map, marker='o', color='#943126', markersize=5,label=f'{n_refst} Ref.St.')
         
-        ax.text(119.8,25.5,f'RMSE = {RMSE:.2f} $(\mu g/m^3)$',size=text_size)
+        ax.text(119.8,25.5,f'RMSE = {RMSE:.3f} $(\mu g/m^3)$',size=text_size,fontweight='bold')
         
         ax.set_xlim(119.7,122.2)
         ax.set_ylim(21.5,26)
         
-        ax.set_xlabel('Longitude (degrees)')
-        ax.set_ylabel('Latitude (degrees)')
-        #ax.legend(loc='upper center',ncol=3,bbox_to_anchor=(0.5, 1.15),framealpha=1)
-        ax.legend(loc='upper center',ncol=1,framealpha=1,bbox_to_anchor=(0.5,1.25))
+        if show_label:
+            
+            ax.set_ylabel('Latitude (degrees)')
+            ax.set_xlabel('Longitude (degrees)')
+        else:
+            
+            ax.set_yticks([])
+            ax.set_ylabel('')
+            #ax.set_xticks([])
+            ax.set_xlabel('Longitude (degrees)')
+            #ax.tick_params(labelbottom=False)
+        if show_legend:
+            #ax.legend(loc='upper center',ncol=1,framealpha=1,bbox_to_anchor=(0.5,1.25))
+            ax.legend(loc='center',ncol=1,framealpha=1,bbox_to_anchor=(1.35,0.5))
         ax.tick_params(axis='both', which='major')
         fig.tight_layout()
         
         if save_fig:
             fname = self.save_path+f'Map_SensorPlacement_{criterion}_r{s}_N{n}_Refst_{n_refst}_Empty{n_empty}_r{s}_var{var:.2e}.png'
-            fig.savefig(fname,dpi=300,format='png')
-        
+            if show_legend:
+                fig.savefig(fname,dpi=300,format='png',bbox_inches='tight')
+            else:
+                fig.savefig(fname,dpi=300,format='png')
         return fig
         
         
@@ -234,7 +246,7 @@ if __name__ == '__main__':
     YEAR = 2018
     POLLUTANT = 'O3'
     n_refst = 4
-    n_empty = 8
+    n_empty = 3
     
     # get reduced dataset and respective locations
     dataset = load_dataset(files_path,N,POLLUTANT)
@@ -256,20 +268,27 @@ if __name__ == '__main__':
     
     
     # map figure
-    plots = Plots(save_path=results_path,marker_size=1,
+    figx,figy = 2,2.5#1.5,2.5
+    plots = Plots(figx=figx,figy=figy,
+                        save_path=results_path,marker_size=1,
                         fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
                         show_plots=True)
+    
+    fig_rankMax = plots.geographical_network_visualization(coordinates,optimal_locations,'Optimal',rmse_optimal,
+                                             N,n_refst,n_empty,S,var,
+                                             text_size=5,
+                                             show_label=True,show_legend=False,save_fig=True)
+    
     fig_rankMax = plots.geographical_network_visualization(coordinates,rankMax_locations,'rankMax',rmse_rankMax,
                                              N,n_refst,n_empty,S,var,
-                                             text_size=5,save_fig=True)
+                                             text_size=6,
+                                             show_label=False,show_legend=False,save_fig=True)
     
     fig_Dopt = plots.geographical_network_visualization(coordinates,Dopt_locations,'HJB',rmse_Dopt,
                                              N,n_refst,n_empty,S,var,
-                                             text_size=5,save_fig=True)
+                                             text_size=6,
+                                             show_label=False,show_legend=True,save_fig=True)
      
-    fig_rankMax = plots.geographical_network_visualization(coordinates,optimal_locations,'Optimal',rmse_optimal,
-                                             N,n_refst,n_empty,S,var,
-                                             text_size=5,save_fig=True)
     
     
     

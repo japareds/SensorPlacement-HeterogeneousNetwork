@@ -973,7 +973,7 @@ class Plots():
               'titlesize':self.fs_title
             }
         
-        grid = {'alpha':0.5}
+        grid = {'alpha':0.}
         mpl.rc('grid',**grid)
     
         mathtext={'default':'regular'}
@@ -1061,13 +1061,26 @@ class Plots():
         ax.set_yticks(np.logspace(-1,1,3))
         ax.set_ylabel('RMSE')
         ax.set_ylim(1e-1,1e1)
-        idx = [int(i) for i in np.logspace(0,4,5)]
-        ax.set_xticks(xrange[idx])
-        ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
+
         ax.set_xscale('log')
+        idx = [int(i) for i in np.logspace(0,5,6)]
+        #ax.set_xticks(xrange[idx])
+        ax.set_xticks(idx)
+        ax.set_xticklabels([r'${0:s}$'.format(scientific_notation(i, 1)) for i in ax.get_xticks()])
         ax.set_xlabel(r'$i$-th configuration')
-        ax.legend(loc='upper center',ncol=3,bbox_to_anchor=(0.5, 1.15),framealpha=1)
+        ax.set_xlim(1,1e5)
+        
+        locmaj = mpl.ticker.LogLocator(base=10,numticks=8)
+        ax.xaxis.set_major_locator(locmaj)
+        
+        locmin = mpl.ticker.LogLocator(base=10.0,subs=np.arange(0.1,1,0.1),numticks=8)
+        ax.xaxis.set_minor_locator(locmin)
+        ax.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
+        
+        
+        ax.legend(loc='upper center',ncol=3,bbox_to_anchor=(0.5, 1.3),framealpha=1)
         ax.tick_params(axis='both', which='major')
+        ax.tick_params(axis='x', which='minor')
         fig.tight_layout()
         
         
@@ -1100,7 +1113,7 @@ class Plots():
         ax.set_xticks(xrange)
         ax.set_xticklabels([np.round(i,2) for i in ax.get_xticks()],rotation=45)
         ax.set_xlabel('RMSE ($\mu g/m^{3}$)')
-        ax.set_xlim(0,10)
+        ax.set_xlim(0,5)
         
         ax.legend(loc='upper right',ncol=1,framealpha=1)
         ax.tick_params(axis='both', which='major')
@@ -1120,8 +1133,8 @@ if __name__ == '__main__':
     
     # network paramteres
     n = 18
-    n_refst = 3
-    n_lcs = 2
+    n_refst = 1
+    n_lcs = 4
     n_empty = 13
     s = 5#n_refst + n_lcs
     
@@ -1258,16 +1271,16 @@ if __name__ == '__main__':
         
         # figure
         plots = Plots(save_path=results_path,marker_size=3,
-                           fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
+                           fs_label=10,fs_ticks=10,fs_legend=8,fs_title=10,
                            show_plots=True)
         
         # ranking plot
         plots.ranking_error_comparison(errors_sorted_zero,locations_sorted_zero,errors_sorted,
-                                       Dopt_error_swap,var_Dopt,idx_rankMax,idx_Dopt,n_refst,s,save_fig=False)
+                                       Dopt_error_swap,var_Dopt,idx_rankMax,idx_Dopt,n_refst,s,save_fig=True)
        
         # histogram plot
         plots.histogram_error(n, s, n_refst, n_empty,var,var_Dopt,
-                              errors_sorted_zero,Dopt_error_swap,rankMax_error_swap,save_fig=False)
+                              errors_sorted_zero,Dopt_error_swap,rankMax_error_swap,save_fig=True)
  
   
     

@@ -545,7 +545,7 @@ class Plots():
         else:
             ax.set_xticks(np.arange(xrange[0],xrange[-1],5))
         ax.set_xticklabels([i+1 for i in ax.get_xticks()])
-        ax.set_xlabel('Number of\n reference stations')
+        ax.set_xlabel('Number of reference stations')
         
         
         yrange = [int(i) for i in df_rmse_ratio.columns]
@@ -579,7 +579,7 @@ class Plots():
         
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        cmap = mpl.colormaps['cividis_r'].resampled(128)#len(crange)
+        cmap = mpl.colormaps['summer_r'].resampled(128)#['cividis_r,summer_r']
         trunc_cmap = mpl.colors.LinearSegmentedColormap.from_list('trunc_cmap',cmap(np.linspace(0.2,0.99,100)),N=2)
         trunc_cmap.set_bad('w',0.8)
         
@@ -589,7 +589,7 @@ class Plots():
         xrange = [i for i in df_selection.columns]
         ax.set_xticks(np.concatenate(([0],np.arange(4,xrange[-1],5))))
         ax.set_xticklabels([i+1 for i in ax.get_xticks()])
-        ax.set_xlabel('Number of\n reference stations')
+        ax.set_xlabel('Number of reference stations')
         
         yrange = [int(i) for i in df_selection.index]
         ax.set_yticks([n - i for i in np.arange(yrange[-1],yrange[0],5)])
@@ -623,7 +623,7 @@ if __name__ == '__main__':
     #exhaustive_path = os.path.abspath(os.path.join(abs_path,os.pardir)) + '/Results/Exhaustive_network/'
     
     # network paramteres
-    N = 18 #[18,71]
+    N = 71 #[18,71]
     POLLUTANT = 'O3' #['O3','NO2']
     
     if N==71 and POLLUTANT == 'O3':
@@ -747,7 +747,7 @@ if __name__ == '__main__':
     show_plots = True
     if show_plots:
         # load files with RMSE for both criteria
-        var = 0.0 #[1e0,1e-2,1e-4,1e-6]
+        var = 1e-1 #[1e-1,1e-2,1e-4,0.0]
         if var == 0.0:
             var_Dopt = 1e-6
         else:
@@ -764,7 +764,7 @@ if __name__ == '__main__':
         
         
         plots = Plots(save_path=results_path,marker_size=1,
-                            fs_label=7,fs_ticks=7,fs_legend=5,fs_title=10,
+                            fs_label=12,fs_ticks=12,fs_legend=10,fs_title=10,
                             show_plots=True)
         label_rankMax = 'rankMax'
         label_Dopt = 'HJB'
@@ -774,16 +774,16 @@ if __name__ == '__main__':
             plots.heatmap_criteria_ratio(df_rmse_global,df_rmse_Dopt,
                                          N,S,var,
                                          center_value=0.5,extreme_range=0.5,
-                                         text_note_size=5,
+                                         text_note_size=6,
                                          label1=label_globalMin,label2=label_Dopt,
-                                         save_fig=False)
+                                         save_fig=True)
         except:
             print(f'No optimal computation for N: {N} and S: {S}')
             
         plots.binary_criteria_selection(df_rmse_rankMax,df_rmse_Dopt,
                                         N,S,var,
                                         label1=label_rankMax,label2=label_Dopt,
-                                        save_fig=False)
+                                        save_fig=True)
 
     
    
