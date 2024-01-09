@@ -435,14 +435,19 @@ class Estimation():
         
          
   
-    def analytical_estimation(self,criterion='rankMax',random_path=''):
+    def analytical_estimation(self,locations_nrefst,var_Dopt=1e-6,criterion='rankMax',random_path=''):
         """
         Compute analytical MSE from sensors distributions in the network.
 
         Parameters
         ----------
+        locations_nrefst : array
+            array indicating locations of [LCSs, RefSt,unmonitored] locations
+        var_Dopt : float
+            variance for Doptimal algorithm in case variance used for estimation is exactly == 0
         criterion : str
             algorithm used for obtaining locations: ['rankMax','D_optimal']
+            
 
         Returns
         -------
@@ -456,12 +461,8 @@ class Estimation():
         sensor_placement = SP.SensorPlacement(criterion, self.n, self.r, self.p_zero_estimate, self.p_eps_estimate,
                                               self.p_empty, self.var_eps, self.var_zero)
         
-        sensor_placement.initialize_problem(self.Psi,self.alpha_reg)
-        if criterion == 'rankMax' or criterion == 'rankMax_FM':
-            sensor_placement.LoadLocations(self.rank_path, self.alpha_reg, self.var_zero)
-        elif criterion == 'D_optimal':
-            sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
-        elif criterion == 'random':
+        #sensor_placement.initialize_problem(self.Psi,self.alpha_reg)
+        if criterion == 'random':
             fname = random_path+f'randomPlacement_locations_r{self.r}_pEmpty{self.p_empty}_numRandomPlacements{self.num_random_placements}.pkl'
             with open(fname,'rb') as f:
                 dict_random_locations = pickle.load(f)
@@ -472,20 +473,25 @@ class Estimation():
             random_placement.locations = dict_random_locations[self.p_zero_estimate]
             random_placement.C_matrix()
             random_placement.covariance_matrix_GLS(self.Psi, self.var_eps, self.var_zero)
-            
-         
+        
+        elif criterion == 'rankMax' or criterion == 'rankMax_FM':
+            sensor_placement.LoadLocations(self.rank_path, self.alpha_reg, self.var_zero)
+        elif criterion == 'D_optimal':
+            if self.var_zero != 0:
+                sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, self.var_zero)
+            else:
+                sensor_placement.LoadLocations(self.Dopt_path, self.alpha_reg, var_Dopt)
             
         
         # get solution for specific number of refst in the network
-        sensor_placement.locations = sensor_placement.dict_locations[self.p_zero_estimate]
-        sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]
-        
+        sensor_placement.locations = locations_nrefst
+        sensor_placement.weights = sensor_placement.dict_weights[self.p_zero_estimate]        
         # check if solution exists
         if sensor_placement.weights[0].sum() == 0.0 and sensor_placement.weights[1].sum()==0.0:
             print(f'No solution found for {criterion} with {self.p_zero_estimate} reference stations\n')
             self.mse_analytical_full, self.mse_analytical_refst, self.mse_analytical_lcs, self.mse_analytical_unmonitored = np.inf,np.inf,np.inf,np.inf
-            
             return
+        
         else:
             print('Locations')
             print(sensor_placement.locations[0])

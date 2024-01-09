@@ -375,11 +375,11 @@ class SensorPlacement:
             with open(fname,'rb') as f:
                 self.dict_weights = pickle.load(f)
         else:
-            fname = dicts_path+f'DiscreteLocations_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_varZero{self.var_zero:.1e}.pkl'
+            fname = dicts_path+f'DiscreteLocations_{self.algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_varZero{var_zero:.1e}.pkl'
             with open(fname,'rb') as f:
                 self.dict_locations = pickle.load(f)
             
-            fname = dicts_path+f'Weights_{self.algorithm}_vs_p0_r{self.r}_pEmpty{self.p_empty}_varZero{self.var_zero:.1e}.pkl'
+            fname = dicts_path+f'Weights_{self.algorithm}_vs_p0_{self.n}N_r{self.r}_pEmpty{self.p_empty}_varZero{var_zero:.1e}.pkl'
             with open(fname,'rb') as f:
                 self.dict_weights = pickle.load(f)
         
