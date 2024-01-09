@@ -324,11 +324,12 @@ def load_dataset(pollutant,n,files_path):
     dataset.cleanMissingvalues(strategy='remove')
     # shrinking network
     dataset.ds = dataset.ds.iloc[:,:n]
-    
+
     train_set_end = '2021-12-31 23:00:00'
     val_set_begin = '2022-01-01 00:00:00'
-    val_set_end = '2022-12-31 23:00:00'
-    test_set_begin = '2022-01-01 00:00:00'
+    val_set_end = '2022-02-19 02:00:00'#'2022-12-31 23:00:00'
+    test_set_begin = '2022-02-19 03:00:00'#'2022-01-01 00:00:00'
+    
     dataset.train_test_split(train_set_end, val_set_begin, val_set_end,test_set_begin)
     
     return dataset
@@ -405,7 +406,7 @@ if __name__ == '__main__':
     
     dataset = load_dataset(POLLUTANT,N,files_path)
     # project dataset onto subspace so that data is exactly sparse in a basis
-    lowrank_basis = LRB.LowRankBasis(dataset.ds_train,S)
+    lowrank_basis = LRB.LowRankBasis(dataset.ds_test,S)
     lowrank_basis.snapshots_matrix()
     lowrank_basis.low_rank_decomposition(normalize=True)
     dataset.project_basis(lowrank_basis.Psi)
